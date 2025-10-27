@@ -2,330 +2,206 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ArUco Lap Counter (Mobile)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>ArUco Lap Counter (Mobile Fixed)</title>
   <style>
-    :root{
-      --pad:12px;
-      --btn:52px;
-      --accent:#015871;
+    body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
+    .controls {
+      position: sticky; top: 0; background: #fff; padding: 12px;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 10;
     }
-    *{box-sizing:border-box;}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      background:#f7f7f7;
-      color:#111;
+    button {
+      background: #015871; color: #fff; border: none; border-radius: 8px;
+      font-size: 16px; font-weight: 600; padding: 10px 16px; min-width: 100px;
     }
-    /* Sticky, touch-friendly controls */
-    .controls{
-      position:sticky; top:0; z-index:10;
-      background:#fff; border-bottom:1px solid #e6e6e6;
-      padding:var(--pad);
-      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    button.secondary { background: #666; }
+    input[type="number"] {
+      padding: 8px; font-size: 16px; width: 80px; border-radius: 8px; border: 1px solid #ccc;
     }
-    .controls input{
-      height:var(--btn); font-size:18px; padding:0 10px; width:120px;
-      border:1px solid #ccc; border-radius:12px; background:#fff;
+    .timer { font-weight: 700; min-width: 80px; font-size: 18px; }
+    video, canvas {
+      width: 100%; height: auto; display: block; background: #000;
     }
-    .controls button{
-      height:var(--btn); min-width:110px; font-size:18px; font-weight:600;
-      border:none; border-radius:12px; padding:0 16px; color:#fff; background:var(--accent);
-      touch-action:manipulation;
+    .tableWrap {
+      overflow-x: auto; padding: 10px;
     }
-    .controls button.secondary{ background:#666; }
-    .controls .timer{
-      min-width:90px; font-variant-numeric:tabular-nums;
-      font-size:18px; font-weight:700;
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td {
+      border: 1px solid #ddd; padding: 8px; text-align: center;
     }
-
-    /* Video + overlay stack full-width */
-    .stage{
-      position:relative; width:100vw; max-width:100%;
-      margin:0 auto; background:#000;
-    }
-    video, canvas{
-      position:relative; display:block; width:100%; height:auto;
-      /* Prevent iOS pinch-zoom quirks while interacting */
-      touch-action:none;
-    }
-    /* Results area */
-    .panel{
-      padding:var(--pad);
-    }
-    .tableWrap{
-      max-height:45vh; overflow:auto; background:#fff; border:1px solid #eee; border-radius:12px;
-    }
-    table{ width:100%; border-collapse:collapse; }
-    thead th{
-      position:sticky; top:0; z-index:1;
-      background:var(--accent); color:#fff; font-weight:700; font-size:16px;
-    }
-    th,td{ padding:10px; text-align:center; border-bottom:1px solid #f0f0f0; }
-    tr.done{ background:#e9f6ec; }
-    .hint{
-      font-size:13px; color:#555; margin-top:6px;
-    }
-    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eee; font-size:12px; }
+    th { background: #015871; color: #fff; }
+    tr.done { background: #d8f3dc; }
   </style>
 </head>
 <body>
-  <!-- Controls -->
   <div class="controls">
     <button id="startBtn">Start</button>
     <button id="stopBtn" class="secondary">Stop</button>
     <div class="timer" id="timer">00:00</div>
-    <label for="reqLaps" class="badge">Required Laps</label>
-    <input type="number" id="reqLaps" value="4" min="1" max="50" inputmode="numeric" />
+    <label>Req. Laps:</label><input type="number" id="reqLaps" value="4" min="1" max="50" />
   </div>
 
-  <!-- Camera + overlay -->
-  <div class="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div class="tableWrap">
+    <table>
+      <thead><tr><th>Runner ID</th><th>Laps</th><th>Finish</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
   </div>
 
-  <!-- Results -->
-  <div class="panel">
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr><th>Runner ID</th><th>Laps</th><th>Finish Time</th></tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-    <div class="hint">
-      Tip: Print ArUco markers (6x6, IDs 0–39). Mount the phone near a checkpoint so markers pass through the on-screen red guide line.
-    </div>
-  </div>
-
-  <!-- OpenCV.js -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onCvReady()"></script>
   <script>
-  // --- DOM refs ---
-  const video = document.getElementById('video');
-  const overlay = document.getElementById('overlay');
-  const ctx = overlay.getContext('2d');
-  const tbody = document.getElementById('tbody');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
-  const timerEl  = document.getElementById('timer');
-  const reqLapsEl= document.getElementById('reqLaps');
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const tbody = document.getElementById("tbody");
+    const timerEl = document.getElementById("timer");
+    const reqInput = document.getElementById("reqLaps");
 
-  // --- State ---
-  let streaming = false;
-  let counting  = false;
-  let startTime = 0;
-  let timerTick = null;
+    let streaming = false;
+    let counting = false;
+    let startTime = 0, timerInt = null;
+    const laps = {};
+    let detector, src, gray, guideY = 0;
+    const COOLDOWN = 2000; // ms between lap counts per runner
+    const runners = {};
 
-  // runner state: { [id]: { laps, done, finish, lastCountAt, seenNow } }
-  const runners = {};
-  const COOLDOWN_MS = 1800; // debounce per ID (avoid double count)
-  let guideYpx = 0;
-
-  // Performance throttle: run detection every Nth frame
-  let frameCount = 0;
-  const DETECT_EVERY = 2; // detect every 2nd animation frame for smoother UI
-
-  // --- Camera init (prefer rear camera) ---
-  async function initCamera(){
-    const constraints = {
-      audio:false,
-      video:{
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height:{ ideal: 720 }
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+        console.log("Camera started");
+      } catch (err) {
+        alert("Camera error: " + err.message);
       }
-    };
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      await video.play();
-    }catch(e){
-      // Fallback: any camera
-      const fallback = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-      video.srcObject = fallback;
-      await video.play();
     }
-  }
 
-  function fitCanvasToVideo(){
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if(!w || !h) return;
-    overlay.width  = w;
-    overlay.height = h;
-    // Place guide line at ~70% height
-    guideYpx = Math.round(h * 0.7);
-  }
+    function fitCanvas() {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      guideY = Math.round(canvas.height * 0.7);
+    }
 
-  function drawGuide(){
-    // Clear
-    ctx.clearRect(0,0,overlay.width, overlay.height);
-    // Guide line
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = Math.max(2, overlay.height/240);
-    ctx.beginPath();
-    ctx.moveTo(0, guideYpx);
-    ctx.lineTo(overlay.width, guideYpx);
-    ctx.stroke();
-  }
+    function drawGuide() {
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, guideY);
+      ctx.lineTo(canvas.width, guideY);
+      ctx.stroke();
+    }
 
-  function startTimer(){
-    startTime = Date.now();
-    timerTick = setInterval(()=>{
-      const s = Math.floor((Date.now()-startTime)/1000);
-      const mm = String(Math.floor(s/60)).padStart(2,'0');
-      const ss = String(s%60).padStart(2,'0');
+    function updateTimer() {
+      const sec = Math.floor((Date.now() - startTime) / 1000);
+      const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+      const ss = String(sec % 60).padStart(2, "0");
       timerEl.textContent = `${mm}:${ss}`;
-    }, 500);
-  }
-  function stopTimer(){
-    clearInterval(timerTick);
-    timerTick = null;
-  }
-
-  function ensureRunnerRow(id){
-    if(runners[id]) return;
-    runners[id] = { laps:0, done:false, finish:'-', lastCountAt:0, seenNow:false };
-    const tr = document.createElement('tr');
-    tr.id = `r-${id}`;
-    tr.innerHTML = `<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
-    tbody.appendChild(tr);
-  }
-
-  function markDone(id){
-    const tr = document.getElementById(`r-${id}`);
-    if(tr) tr.classList.add('done');
-  }
-  function updateRow(id){
-    document.getElementById(`laps-${id}`).textContent = String(runners[id].laps);
-    document.getElementById(`fin-${id}`).textContent  = runners[id].finish;
-  }
-
-  function countIfEligible(id){
-    const now = Date.now();
-    const r = runners[id];
-    const req = parseInt(reqLapsEl.value||'4',10);
-    if(r.done) return;
-
-    // Debounce: only count once per COOLDOWN_MS
-    if(now - r.lastCountAt < COOLDOWN_MS) return;
-
-    r.laps += 1;
-    r.lastCountAt = now;
-
-    // If reached target, record finish time (relative)
-    if(r.laps >= req){
-      r.done = true;
-      const s = Math.floor((now - startTime)/1000);
-      const mm = String(Math.floor(s/60)).padStart(2,'0');
-      const ss = String(s%60).padStart(2,'0');
-      r.finish = `${mm}:${ss}`;
-      markDone(id);
     }
-    updateRow(id);
-  }
 
-  // --- OpenCV pipeline ---
-  let cvReady = false, detector = null, src=null, gray=null;
+    function addRunner(id) {
+      if (runners[id]) return;
+      runners[id] = { laps: 0, done: false, last: 0, finish: "-" };
+      const tr = document.createElement("tr");
+      tr.id = "r" + id;
+      tr.innerHTML = `<td>${id}</td><td id="laps${id}">0</td><td id="fin${id}">-</td>`;
+      tbody.appendChild(tr);
+    }
 
-  function onCvReady(){
-    cv['onRuntimeInitialized'] = async () => {
-      cvReady = true;
-      // Build detector
-      const dict = new cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_50);
-      const params = new cv.aruco.DetectorParameters();
-      detector = new cv.aruco.ArucoDetector(dict, params);
+    function markDone(id) {
+      document.getElementById("r" + id)?.classList.add("done");
+    }
 
-      await initCamera();
-      video.addEventListener('loadedmetadata', () => {
-        fitCanvasToVideo();
-        drawGuide();
-        streaming = true;
-        // Mats sized to video
-        src  = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-        gray = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
-        requestAnimationFrame(loop);
-      });
+    function updateRunner(id) {
+      document.getElementById("laps" + id).textContent = runners[id].laps;
+      document.getElementById("fin" + id).textContent = runners[id].finish;
+    }
 
-      // Handle orientation/resize
-      window.addEventListener('resize', ()=>{ fitCanvasToVideo(); drawGuide(); });
-      window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{fitCanvasToVideo(); drawGuide();}, 300); });
-    };
-  }
-  window.onCvReady = onCvReady;
+    function countLap(id) {
+      const now = Date.now();
+      const r = runners[id];
+      const required = parseInt(reqInput.value);
+      if (r.done) return;
+      if (now - r.last < COOLDOWN) return;
+      r.laps++;
+      r.last = now;
+      if (r.laps >= required) {
+        r.done = true;
+        const sec = Math.floor((now - startTime) / 1000);
+        const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+        const ss = String(sec % 60).padStart(2, "0");
+        r.finish = `${mm}:${ss}`;
+        markDone(id);
+      }
+      updateRunner(id);
+    }
 
-  function loop(){
-    if(!streaming || !cvReady){ requestAnimationFrame(loop); return; }
+    function onCvReady() {
+      cv["onRuntimeInitialized"] = async () => {
+        console.log("OpenCV ready");
+        await initCamera();
 
-    // Always draw current frame to overlay (for guide + debug)
-    ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
-    // Redraw guide on top
-    drawGuide();
+        video.addEventListener("loadedmetadata", () => {
+          fitCanvas();
+          src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+          gray = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
+          const dict = new cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_50);
+          const params = new cv.aruco.DetectorParameters();
+          detector = new cv.aruco.ArucoDetector(dict, params);
+          streaming = true;
+          processVideo();
+        });
+      };
+    }
 
-    frameCount++;
-    const shouldDetect = (frameCount % DETECT_EVERY === 0);
-
-    if(shouldDetect){
-      // Read pixels to OpenCV Mats
-      const frame = ctx.getImageData(0,0,overlay.width, overlay.height);
-      src.data.set(frame.data);
+    function processVideo() {
+      if (!streaming) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      src.data.set(imgData.data);
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      // Detect markers
       const corners = new cv.MatVector();
-      const ids     = new cv.Mat();
+      const ids = new cv.Mat();
       detector.detectMarkers(gray, corners, ids);
+      drawGuide();
 
-      // Draw detected markers
-      if(!ids.empty()){
-        cv.aruco.drawDetectedMarkers(src, corners, ids);
-        // Put back to canvas (optional visual)
-        cv.imshow(overlay, src);
-
-        const nowSeen = new Set();
-        for(let i=0;i<ids.rows;i++){
+      if (!ids.empty()) {
+        for (let i = 0; i < ids.rows; i++) {
           const id = ids.intPtr(i)[0];
-          nowSeen.add(id);
-          ensureRunnerRow(id);
+          addRunner(id);
 
-          // Crossing heuristic: if marker center is near or just crossed the guide line,
-          // count with cooldown (simple, robust for a single checkpoint).
           const c = corners.get(i);
-          // average y of the four corners
           let cy = 0;
-          for(let k=0;k<4;k++) cy += c.doubleAt(0,k*2+1);
-          cy /= 4.0;
+          for (let k = 0; k < 4; k++) cy += c.doubleAt(0, k * 2 + 1);
+          cy /= 4;
 
-          // Count if center is within ±(line thickness * 3) of guide line
-          const window = Math.max(8, overlay.height/60);
-          if(Math.abs(cy - guideYpx) <= window && counting){
-            countIfEligible(id);
+          if (Math.abs(cy - guideY) < 20 && counting) {
+            countLap(id);
           }
         }
       }
-      // Cleanup
-      // (opencv.js uses garbage collection, but explicit .delete() is safer)
-      // corners/ids will be GC'ed; explicit delete for safety in a larger app.
-    }
-    requestAnimationFrame(loop);
-  }
 
-  // --- Controls ---
-  startBtn.addEventListener('click', ()=>{
-    if(counting) return;
-    counting = true;
-    // reset lastSeen flags
-    Object.values(runners).forEach(r => r.seenNow=false);
-    if(!timerEl.textContent || timerEl.textContent==='00:00') startTime = Date.now();
-    startTimer();
-  });
-  stopBtn.addEventListener('click', ()=>{
-    counting = false;
-    stopTimer();
-  });
+      requestAnimationFrame(processVideo);
+    }
+
+    // Buttons
+    document.getElementById("startBtn").onclick = () => {
+      counting = true;
+      startTime = Date.now();
+      if (!timerInt) timerInt = setInterval(updateTimer, 1000);
+    };
+    document.getElementById("stopBtn").onclick = () => {
+      counting = false;
+      clearInterval(timerInt);
+      timerInt = null;
+    };
   </script>
 </body>
 </html>
