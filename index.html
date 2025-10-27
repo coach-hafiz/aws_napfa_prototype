@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-  <title>ArUco Lap Counter (Working Mobile Version)</title>
+  <title>ArUco Lap Counter</title>
   <style>
     body { margin:0; font-family:sans-serif; background:#f7f7f7; }
     .controls {
@@ -16,13 +16,15 @@
       padding:8px 14px;font-size:16px;font-weight:600;
     }
     button.secondary { background:#666; }
+    button:disabled { opacity:0.5; }
     input[type=number] {
       padding:6px;border-radius:8px;border:1px solid #ccc;width:70px;
     }
     .timer { font-weight:700;min-width:70px; }
+    .status { font-size:12px; color:#666; }
     .stage { position:relative;width:100%;max-width:100%;background:#000;overflow:hidden; }
-    video, canvas { width:100%; height:auto; display:block; }
-    canvas { position:absolute; top:0; left:0; pointer-events:none; }
+    video { width:100%; height:auto; display:block; }
+    canvas { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
     table { width:100%; border-collapse:collapse; margin-top:10px; background:#fff; }
     th, td { border:1px solid #ccc; padding:6px; text-align:center; }
     th { background:#015871;color:#fff; }
@@ -31,10 +33,12 @@
 </head>
 <body>
   <div class="controls">
-    <button id="startBtn">Start</button>
-    <button id="stopBtn" class="secondary">Stop</button>
+    <button id="startBtn" disabled>Start</button>
+    <button id="stopBtn" class="secondary" disabled>Stop</button>
+    <button id="resetBtn" class="secondary">Reset</button>
     <div class="timer" id="timer">00:00</div>
     <label>Req Laps:</label><input id="reqLaps" type="number" value="4" min="1" max="50">
+    <div class="status" id="status">Loading...</div>
   </div>
 
   <div class="stage">
@@ -47,32 +51,67 @@
     <tbody id="tbody"></tbody>
   </table>
 
-  <script async src="https://docs.opencv.org/4.10.0/opencv.js" onload="onCvReady()"></script>
   <script>
+    let cvReady = false;
+    
+    function loadOpenCV() {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://docs.opencv.org/4.10.0/opencv.js';
+        script.async = true;
+        script.onload = () => {
+          if (typeof cv !== 'undefined') {
+            cv['onRuntimeInitialized'] = () => {
+              cvReady = true;
+              resolve();
+            };
+          } else {
+            reject(new Error('OpenCV not loaded'));
+          }
+        };
+        script.onerror = () => reject(new Error('Failed to load OpenCV'));
+        document.body.appendChild(script);
+      });
+    }
+
     const video = document.getElementById('video');
     const overlay = document.getElementById('overlay');
     const ctx = overlay.getContext('2d');
     const tbody = document.getElementById('tbody');
     const timerEl = document.getElementById('timer');
     const reqInput = document.getElementById('reqLaps');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
 
     let streaming = false, counting = false, startTime = 0, timerInt = null;
-    const runners = {}, COOLDOWN = 2000;
+    const runners = {};
+    const COOLDOWN = 2000;
     let guideY = 0;
-    let src, gray, detector;
+    let src, gray, detector, dictionary, detectorParams;
 
-    // Start camera
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { 
+            facingMode: { ideal: "environment" }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          },
           audio: false
         });
         video.srcObject = stream;
         await video.play();
-        return new Promise(res => video.onloadedmetadata = () => res());
+        return new Promise(res => {
+          video.onloadedmetadata = () => {
+            fitCanvas();
+            res();
+          };
+        });
       } catch (e) {
-        alert('Camera error: ' + e.message);
+        statusEl.textContent = 'Camera error: ' + e.message;
+        throw e;
       }
     }
 
@@ -134,69 +173,135 @@
       timerEl.textContent = `${mm}:${ss}`;
     }
 
-    // Main loop
     function processFrame() {
-      if (!streaming) return requestAnimationFrame(processFrame);
+      if (!streaming || !cvReady) {
+        requestAnimationFrame(processFrame);
+        return;
+      }
 
-      ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
       drawGuide();
 
-      const frame = ctx.getImageData(0, 0, overlay.width, overlay.height);
-      src.data.set(frame.data);
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      try {
+        // Capture frame from video
+        ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
+        const imageData = ctx.getImageData(0, 0, overlay.width, overlay.height);
+        
+        // Convert to cv.Mat
+        src.data.set(imageData.data);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      const corners = new cv.MatVector();
-      const ids = new cv.Mat();
-      detector.detectMarkers(gray, corners, ids);
+        // Detect markers
+        const corners = new cv.MatVector();
+        const ids = new cv.Mat();
+        const rejected = new cv.MatVector();
+        
+        detector.detectMarkers(gray, corners, ids, rejected);
 
-      if (!ids.empty()) {
-        cv.aruco.drawDetectedMarkers(src, corners, ids);
-        cv.imshow('overlay', src); // Draw markers
-        for (let i = 0; i < ids.rows; i++) {
-          const id = ids.intPtr(i)[0];
-          addRunner(id);
-          const c = corners.get(i);
-          let cy = 0;
-          for (let k = 0; k < 4; k++) cy += c.data64F[k * 2 + 1];
-          cy /= 4;
-          if (Math.abs(cy - guideY) < 20 && counting) countLap(id);
+        if (ids.rows > 0) {
+          // Draw detected markers on overlay
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          cv.aruco.drawDetectedMarkers(src, corners, ids);
+          
+          // Convert back to canvas
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = overlay.width;
+          tempCanvas.height = overlay.height;
+          cv.imshow(tempCanvas, src);
+          ctx.drawImage(tempCanvas, 0, 0);
+          
+          drawGuide();
+
+          // Process each detected marker
+          for (let i = 0; i < ids.rows; i++) {
+            const id = ids.data32S[i];
+            addRunner(id);
+            
+            // Get marker center Y position
+            const corner = corners.get(i);
+            let cy = 0;
+            for (let k = 0; k < 4; k++) {
+              cy += corner.data32F[k * 2 + 1];
+            }
+            cy /= 4;
+            
+            // Check if marker crosses guide line
+            if (Math.abs(cy - guideY) < 30 && counting) {
+              countLap(id);
+            }
+          }
+        } else {
+          drawGuide();
         }
+
+        corners.delete();
+        ids.delete();
+        rejected.delete();
+      } catch (e) {
+        console.error('Frame processing error:', e);
       }
 
       requestAnimationFrame(processFrame);
     }
 
-    // OpenCV Ready
-    function onCvReady() {
-      cv['onRuntimeInitialized'] = async () => {
-        console.log('OpenCV ready');
+    async function initialize() {
+      try {
+        statusEl.textContent = 'Loading OpenCV...';
+        await loadOpenCV();
+        
+        statusEl.textContent = 'Initializing camera...';
         await initCamera();
-        fitCanvas();
-        drawGuide();
 
-        src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-        gray = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
+        statusEl.textContent = 'Setting up detector...';
+        
+        // Initialize cv.Mat objects
+        src = new cv.Mat(overlay.height, overlay.width, cv.CV_8UC4);
+        gray = new cv.Mat(overlay.height, overlay.width, cv.CV_8UC1);
 
-        const dict = new cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_50);
-        const params = new cv.aruco.DetectorParameters();
-        detector = new cv.aruco.ArucoDetector(dict, params);
+        // Setup ArUco detector
+        dictionary = new cv.aruco_Dictionary(cv.aruco.DICT_6X6_50);
+        detectorParams = new cv.aruco_DetectorParameters();
+        detector = new cv.aruco_ArucoDetector(dictionary, detectorParams);
 
         streaming = true;
+        statusEl.textContent = 'Ready';
+        startBtn.disabled = false;
+        stopBtn.disabled = false;
+        
         requestAnimationFrame(processFrame);
-      };
+      } catch (e) {
+        statusEl.textContent = 'Initialization failed: ' + e.message;
+        console.error('Init error:', e);
+      }
     }
 
-    // Buttons
-    document.getElementById('startBtn').onclick = () => {
+    startBtn.onclick = () => {
       counting = true;
       startTime = Date.now();
       if (!timerInt) timerInt = setInterval(updateTimer, 1000);
+      statusEl.textContent = 'Counting...';
     };
-    document.getElementById('stopBtn').onclick = () => {
+
+    stopBtn.onclick = () => {
       counting = false;
       clearInterval(timerInt);
       timerInt = null;
+      statusEl.textContent = 'Stopped';
     };
+
+    resetBtn.onclick = () => {
+      counting = false;
+      clearInterval(timerInt);
+      timerInt = null;
+      startTime = 0;
+      timerEl.textContent = '00:00';
+      tbody.innerHTML = '';
+      Object.keys(runners).forEach(k => delete runners[k]);
+      statusEl.textContent = 'Reset - Ready';
+    };
+
+    // Start initialization
+    initialize();
   </script>
 </body>
 </html>
