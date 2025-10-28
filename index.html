@@ -1,268 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ArUco Lap Counter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-color: #f0f0f0;
-        }
-        #container {
-            width: 100%;
-            max-width: 800px;
-        }
-        #video {
-            display: none;
-        }
-        #canvas {
-            width: 100%;
-            height: auto;
-            border: 1px solid #ccc;
-        }
-        #controls {
-            display: flex;
-            justify-content: space-around;
-            margin: 10px 0;
-        }
-        #controls input, #controls button {
-            padding: 10px;
-            font-size: 16px;
-        }
-        #timer {
-            font-size: 24px;
-            text-align: center;
-            margin: 10px 0;
-        }
-        #results {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        #results th, #results td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: center;
-        }
-        #results th {
-            background-color: #f2f2f2;
-        }
-        #status {
-            text-align: center;
-            margin: 10px 0;
-        }
-    </style>
-    <script async src="https://docs.opencv.org/4.10.0/opencv.js" onload="onOpenCvReady();"></script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <title>AprilTag Lap Counter (Fast, Mobile)</title>
+  <style>
+    :root { --accent:#015871; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f7f7f7;color:#111}
+    .controls{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #e6e6e6;padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .controls button{height:48px;min-width:110px;font-size:16px;font-weight:600;border:0;border-radius:12px;color:#fff;background:var(--accent)}
+    .controls button.secondary{background:#666}
+    .controls input{height:48px;font-size:16px;padding:0 12px;border:1px solid #ccc;border-radius:12px;width:110px}
+    .timer{font-variant-numeric:tabular-nums;font-weight:700;min-width:88px}
+    .stage{position:relative;width:100%;max-width:100%;background:#000;overflow:hidden}
+    video,canvas{display:block;width:100%;height:auto}
+    #overlay{position:absolute;left:0;top:0;pointer-events:none}
+    .panel{padding:12px}
+    .tableWrap{max-height:45vh;overflow:auto;background:#fff;border:1px solid #eee;border-radius:12px}
+    table{width:100%;border-collapse:collapse}
+    thead th{position:sticky;top:0;z-index:1;background:var(--accent);color:#fff;font-weight:700}
+    th,td{padding:10px;text-align:center;border-bottom:1px solid #f0f0f0}
+    tr.done{background:#e9f6ec}
+    .log{font-size:12px;color:#555;margin-top:8px;white-space:pre-wrap}
+  </style>
 </head>
 <body>
-    <div id="container">
-        <h1>ArUco Lap Counter</h1>
-        <video id="video" playsinline></video>
-        <canvas id="canvas"></canvas>
-        <div id="controls">
-            <label for="requiredLaps">Required Laps:</label>
-            <input type="number" id="requiredLaps" value="10" min="1">
-            <button id="startBtn" disabled>Start</button>
-            <button id="stopBtn" disabled>Stop</button>
-        </div>
-        <div id="timer">00:00</div>
-        <table id="results">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Laps</th>
-                    <th>Finish Time</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-        <div id="status">Loading OpenCV...</div>
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" class="secondary">Stop</button>
+    <div class="timer" id="timer">00:00</div>
+    <label for="req">Required Laps</label>
+    <input id="req" type="number" value="4" min="1" max="50" inputmode="numeric"/>
+  </div>
+
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="tableWrap">
+      <table>
+        <thead><tr><th>Tag ID</th><th>Laps</th><th>Finish</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
     </div>
-    <script>
-        let video, canvas, ctx, stream;
-        let cap, frame, corners, ids, rejected, dictionary, detector;
-        let running = false;
-        let startPerf = 0;
-        let timerInterval;
-        let trackers = new Map();
-        let requiredLaps = 10;
-        let cooldown = 2; // seconds
-        let lineYFraction = 0.7;
-        let uiInterval;
+    <div class="log" id="log"></div>
+  </div>
 
-        function onOpenCvReady() {
-            document.getElementById('status').innerText = 'OpenCV.js is ready.';
-            document.getElementById('startBtn').disabled = false;
-            cv['onRuntimeInitialized'] = () => {
-                initializeOpenCV();
-            };
+  <!-- Load two popular AprilTag browser builds (either can succeed). -->
+  <!-- Build A: AprilTag WASM (UMD global often named AprilTag/createAprilTagDetector) -->
+  <script defer src="https://unpkg.com/apriltag-wasm@0.1.6/dist/apriltag.min.js"></script>
+  <!-- Build B: apriltag-js (UMD global often named apriltag) -->
+  <script defer src="https://unpkg.com/apriltag-js@0.1.4/dist/apriltag.min.js"></script>
+
+  <script>
+  // ---------- DOM ----------
+  const video   = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+  const ctx     = overlay.getContext('2d');
+  const tbody   = document.getElementById('tbody');
+  const timerEl = document.getElementById('timer');
+  const reqEl   = document.getElementById('req');
+  const logEl   = document.getElementById('log');
+
+  // ---------- State ----------
+  let streaming=false, counting=false, startTime=0, timerInt=null;
+  const COOLDOWN_MS=2000;
+  const runners={}; // id -> {laps, done, last, finish}
+  let guideY=0;
+
+  // AprilTag detector adapter (one of the two libs)
+  let detector=null;
+  let detectFn=null; // (imageData,width,height) => [{id, cx, cy}]
+
+  // ---------- Utils ----------
+  const log=(...a)=>{ console.log(...a); logEl.textContent = [logEl.textContent, a.join(' ')].filter(Boolean).join('\n').slice(-2000); };
+  function fitCanvas(){
+    if(!video.videoWidth||!video.videoHeight) return;
+    overlay.width  = video.videoWidth;
+    overlay.height = video.videoHeight;
+    guideY = Math.round(overlay.height*0.7);
+  }
+  function drawGuide(){
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    // Live frame under canvas:
+    ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
+    // Guide line:
+    ctx.strokeStyle='red';
+    ctx.lineWidth = Math.max(3, overlay.height/240);
+    ctx.beginPath();
+    ctx.moveTo(0, guideY);
+    ctx.lineTo(overlay.width, guideY);
+    ctx.stroke();
+  }
+  function ensureRow(id){
+    if(runners[id]) return;
+    runners[id] = {laps:0, done:false, last:0, finish:'-'};
+    const tr = document.createElement('tr');
+    tr.id = `r-${id}`;
+    tr.innerHTML = `<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
+    tbody.appendChild(tr);
+  }
+  function updateRow(id){
+    document.getElementById(`laps-${id}`).textContent = String(runners[id].laps);
+    document.getElementById(`fin-${id}`).textContent  = runners[id].finish;
+  }
+  function markDone(id){
+    document.getElementById(`r-${id}`)?.classList.add('done');
+  }
+  function hmsSince(ms0){
+    const s = Math.floor((Date.now()-ms0)/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    return `${mm}:${ss}`;
+  }
+
+  // ---------- Lap logic ----------
+  function countLap(id){
+    const now = Date.now();
+    const r = runners[id];
+    const req = parseInt(reqEl.value||'4',10);
+    if(r.done) return;
+    if(now - r.last < COOLDOWN_MS) return; // cooldown
+    r.laps++; r.last = now;
+    if(r.laps >= req){
+      r.done = true;
+      r.finish = hmsSince(startTime);
+      markDone(id);
+    }
+    updateRow(id);
+  }
+
+  // ---------- Camera ----------
+  async function initCamera(){
+    const constraints = {
+      audio:false,
+      video:{
+        facingMode:{ ideal:'environment' },
+        width:{ ideal:1280 },
+        height:{ ideal:720 }
+      }
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+    await new Promise(r=>video.onloadedmetadata=r);
+    streaming = true;
+    fitCanvas();
+    drawGuide();
+    log('Camera ready:', video.videoWidth+'x'+video.videoHeight);
+  }
+
+  // ---------- AprilTag detector loaders (two API shapes) ----------
+  async function tryInitDetector(){
+    // Try Build A (apriltag-wasm global): createAprilTagDetector() or AprilTag()
+    if (typeof window.createAprilTagDetector === 'function' || typeof window.AprilTag === 'function') {
+      try {
+        log('Trying detector: apriltag-wasm');
+        // Some builds expose createAprilTagDetector, others expose AprilTag() promise
+        let mod;
+        if (typeof window.createAprilTagDetector === 'function') {
+          mod = await window.createAprilTagDetector();
+        } else {
+          mod = await window.AprilTag(); // returns Module with AprilTagDetector
         }
+        // Common API in wasm builds:
+        const TagDetector = mod.AprilTagDetector || mod.default || mod;
+        const d = new TagDetector();
+        if (d.addTagFamily) d.addTagFamily('tag36h11'); // ensure correct family
+        detector = d;
 
-        function initializeOpenCV() {
-            video = document.getElementById('video');
-            canvas = document.getElementById('canvas');
-            ctx = canvas.getContext('2d');
+        // Build detect adapter: returns [{id,cx,cy}, ...]
+        detectFn = (imageData,w,h)=>{
+          // Many builds expect grayscale Uint8Array; we’ll downsample fast:
+          const gray = new Uint8Array(w*h);
+          const data = imageData.data;
+          for(let i=0,j=0;i<data.length;i+=4,j++){
+            // luma approx
+            gray[j] = (data[i]*0.2126 + data[i+1]*0.7152 + data[i+2]*0.0722)|0;
+          }
+          const tags = detector.detect(gray, w, h); // array of detections
+          return (tags||[]).map(t=>{
+            const corners = t.corners || t.c || [];
+            let cy=0,cx=0;
+            for(let k=0;k<corners.length;k++){ cx+=corners[k].x; cy+=corners[k].y; }
+            const n = Math.max(1, corners.length);
+            return { id: t.id ?? t.tagId ?? t.idNumber ?? -1, cx: cx/n, cy: cy/n };
+          });
+        };
+        log('Loaded apriltag-wasm detector.');
+        return true;
+      } catch(e) {
+        log('apriltag-wasm init error:', e.message||e);
+      }
+    }
 
-            dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_50);
-            detector = new cv.aruco.ArucoDetector(dictionary);
+    // Try Build B (apriltag-js global): window.apriltag.Detector
+    if (window.apriltag && typeof window.apriltag.Detector === 'function') {
+      try {
+        log('Trying detector: apriltag-js (UMD)');
+        detector = new window.apriltag.Detector({ families: ['tag36h11'] });
+        detectFn = (imageData,w,h)=>{
+          // apriltag-js expects {data, width, height}
+          const detections = detector.detect(imageData);
+          return (detections||[]).map(d=>{
+            const cs = d.corners||d.c||[];
+            let cx=0,cy=0;
+            for(let k=0;k<cs.length;k++){ cx+=cs[k].x; cy+=cs[k].y; }
+            const n = Math.max(1, cs.length);
+            return { id: d.id ?? d.tag_id ?? -1, cx: cx/n, cy: cy/n };
+          });
+        };
+        log('Loaded apriltag-js detector.');
+        return true;
+      } catch(e) {
+        log('apriltag-js init error:', e.message||e);
+      }
+    }
 
-            cap = new cv.VideoCapture(video);
-            frame = new cv.Mat();
-            corners = new cv.MatVector();
-            ids = new cv.Mat();
-            rejected = new cv.MatVector();
-        }
+    return false;
+  }
 
-        async function startCamera() {
-            try {
-                const constraints = {
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                await video.play();
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                frame = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-            } catch (err) {
-                console.error('Camera error:', err);
-                document.getElementById('status').innerText = 'Error accessing camera.';
-            }
-        }
+  // ---------- Loop ----------
+  function loop(){
+    if(!streaming){ requestAnimationFrame(loop); return; }
+    drawGuide();
 
-        function processVideo() {
-            if (!running) return;
+    if(detector && detectFn){
+      // Fast: use the canvas frame directly
+      const frame = ctx.getImageData(0,0,overlay.width,overlay.height);
+      let dets=[];
+      try { dets = detectFn(frame, overlay.width, overlay.height) || []; }
+      catch(e){ log('Detect error:', e.message||e); }
 
-            cap.read(frame);
-
-            detector.detectMarkers(frame, corners, ids, rejected);
-
-            const width = canvas.width;
-            const height = canvas.height;
-            const lineY = Math.floor(lineYFraction * height);
-
-            if (ids.rows > 0) {
-                const currentTime = performance.now() / 1000;
-
-                for (let i = 0; i < ids.rows; i++) {
-                    const id = ids.data32S[i];
-                    if (!trackers.has(id)) {
-                        trackers.set(id, {
-                            laps: 0,
-                            finishTime: null,
-                            prevY: null,
-                            lastCountTime: 0
-                        });
-                    }
-                    const tracker = trackers.get(id);
-
-                    const markerCorners = corners.get(i);
-                    let sumY = 0;
-                    for (let j = 0; j < 4; j++) {
-                        sumY += markerCorners.data32F[j * 2 + 1];
-                    }
-                    const centerY = sumY / 4;
-
-                    if (tracker.prevY !== null &&
-                        tracker.prevY > lineY &&
-                        centerY <= lineY &&
-                        currentTime - tracker.lastCountTime > cooldown) {
-                        tracker.laps++;
-                        tracker.lastCountTime = currentTime;
-                        const elapsed = (performance.now() - startPerf) / 1000;
-                        if (tracker.laps >= requiredLaps && tracker.finishTime === null) {
-                            tracker.finishTime = elapsed;
-                        }
-                    }
-                    tracker.prevY = centerY;
-                }
-            }
-
-            // Draw detections and line
-            if (ids.rows > 0) {
-                cv.aruco.drawDetectedMarkers(frame, corners, ids, new cv.Scalar(0, 255, 0));
-            }
-            cv.line(frame, new cv.Point(0, lineY), new cv.Point(width, lineY), new cv.Scalar(255, 0, 0, 255), 2);
-
-            cv.imshow('canvas', frame);
-
-            requestAnimationFrame(processVideo);
-        }
-
-        function updateTimer() {
-            const elapsed = (performance.now() - startPerf) / 1000;
-            document.getElementById('timer').innerText = formatTime(elapsed);
-        }
-
-        function updateUI() {
-            const tbody = document.querySelector('#results tbody');
-            tbody.innerHTML = '';
-
-            // Sort: finished first by finishTime asc, then unfinished by ID asc
-            const entries = Array.from(trackers.entries());
-            entries.sort((a, b) => {
-                if (a[1].finishTime !== null && b[1].finishTime !== null) {
-                    return a[1].finishTime - b[1].finishTime;
-                } else if (a[1].finishTime !== null) {
-                    return -1;
-                } else if (b[1].finishTime !== null) {
-                    return 1;
-                } else {
-                    return a[0] - b[0];
-                }
-            });
-
-            entries.forEach(([id, tracker]) => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${id}</td>
-                    <td>${tracker.laps}</td>
-                    <td>${tracker.finishTime !== null ? formatTime(tracker.finishTime) : '-'}</td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
-            return `${mins}:${secs}`;
-        }
-
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            if (running) return;
-            requiredLaps = parseInt(document.getElementById('requiredLaps').value) || 10;
-            await startCamera();
-            running = true;
-            startPerf = performance.now();
-            timerInterval = setInterval(updateTimer, 1000);
-            uiInterval = setInterval(updateUI, 500);
-            document.getElementById('startBtn').disabled = true;
-            document.getElementById('stopBtn').disabled = false;
-            requestAnimationFrame(processVideo);
+      if(dets.length){
+        // Draw quick boxes/centers
+        ctx.save();
+        ctx.strokeStyle='lime'; ctx.lineWidth=Math.max(2, overlay.height/360);
+        ctx.fillStyle='rgba(0,128,0,0.25)';
+        dets.forEach(d=>{
+          // Display dot at center for speed
+          ctx.beginPath(); ctx.arc(d.cx, d.cy, Math.max(4, overlay.height/200), 0, Math.PI*2); ctx.fill();
+          ensureRow(d.id);
+          if (counting && Math.abs(d.cy - guideY) < Math.max(16, overlay.height/60)) {
+            countLap(d.id);
+          }
         });
+        ctx.restore();
+      }
+    }
+    requestAnimationFrame(loop);
+  }
 
-        document.getElementById('stopBtn').addEventListener('click', () => {
-            running = false;
-            clearInterval(timerInterval);
-            clearInterval(uiInterval);
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-            updateUI(); // Final update
-        });
-    </script>
+  // ---------- Timer ----------
+  function startTimer(){ startTime=Date.now(); timerEl.textContent='00:00'; timerInt=setInterval(()=>{ timerEl.textContent=hmsSince(startTime); }, 1000); }
+  function stopTimer(){ clearInterval(timerInt); timerInt=null; }
+
+  // ---------- Init ----------
+  (async function init(){
+    try{
+      await initCamera();
+      await new Promise(r=>setTimeout(r, 50)); // tiny settle
+      fitCanvas(); drawGuide();
+      const ok = await tryInitDetector();
+      if(!ok){
+        log('❌ Could not initialize AprilTag detector from CDN builds.');
+        log('Tips:');
+        log('- Ensure you are serving over HTTPS (Vercel is OK).');
+        log('- Try reloading once; some mobile WASM builds need a warm cache.');
+        log('- Print large tag36h11 (A6/A5), good light, 1–2m from camera.');
+      } else {
+        log('✅ Detector ready. Aim tags at the red line.');
+      }
+      requestAnimationFrame(loop);
+    }catch(e){
+      log('Init error:', e.message||e);
+      alert('Init error: '+ (e.message||e));
+    }
+  })();
+
+  // ---------- Buttons ----------
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    if(counting) return;
+    counting=true; startTimer();
+  });
+  document.getElementById('stopBtn').addEventListener('click', ()=>{
+    counting=false; stopTimer();
+  });
+
+  // ---------- Resize/orientation handling ----------
+  window.addEventListener('resize', ()=>{ fitCanvas(); });
+  window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ fitCanvas(); }, 300); });
+  </script>
 </body>
 </html>
