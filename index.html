@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>AprilTag Lap Counter</title>
+<title>AprilTag Lap Counter — Fixed Video Draw</title>
 <style>
   :root{ --accent:#0077a9; --bg:#f7f9fb }
   *{ box-sizing:border-box }
@@ -14,6 +14,7 @@
   select,input[type=number]{ height:40px; padding:0 8px; border-radius:10px; border:1px solid #d7e3ea; background:#fff }
   .timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:80px; text-align:center; }
   .wrap{ background:#000; display:flex; justify-content:center; align-items:center }
+  /* important: keep canvas CSS width responsive but use attributes for actual pixels */
   canvas#view{ display:block; width:100%; height:auto; touch-action:none; background:#000 }
   .panel{ padding:12px }
   .tbl{ max-height:44vh; overflow:auto; background:#fff; border:1px solid #e6eef6; border-radius:10px }
@@ -25,6 +26,7 @@
   .muted{ color:#666; font-size:13px }
   .status{ padding:6px 10px; border-radius:999px; background:#eaf2f8; color:#034c66; font-weight:700 }
   .small{ font-size:13px; color:#334 }
+  .overlay-debug{ position:absolute; left:8px; top:8px; padding:6px 10px; background:rgba(0,0,0,0.5); color:#fff; border-radius:8px; font-size:12px; z-index:30 }
 </style>
 </head>
 <body>
@@ -36,7 +38,6 @@
       <div class="timer" id="timer">00:00</div>
       <div class="small">Laps:</div>
       <select id="reqLaps">
-        <!-- options 1..20 -->
         <script>for(let i=1;i<=20;i++){document.write(`<option value="${i}">${i}</option>`)}</script>
       </select>
     </div>
@@ -51,14 +52,17 @@
     <label class="small" title="Tolerance in pixels from guide line">Line tolerance (px): <input id="tol" type="number" value="24" min="4" style="width:70px"></label>
   </div>
 
-  <div class="wrap">
+  <div class="wrap" style="position:relative">
+    <!-- Canvas shows the camera frames and overlays -->
     <canvas id="view"></canvas>
+    <!-- small overlay for debug info (hidden by default, shown when necessary) -->
+    <div id="dbg" class="overlay-debug" style="display:none">debug</div>
   </div>
 
   <div class="panel">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
-      <div class="muted">Export enabled only after Stop.</div>
+      <div class="muted">Export enabled after Stop.</div>
     </div>
 
     <div class="tbl">
@@ -75,7 +79,7 @@
   <script defer src="https://unpkg.com/apriltag-js@0.1.4/dist/apriltag.min.js"></script>
 
   <script>
-  // DOM
+  // ---------- DOM ----------
   const canvas = document.getElementById('view');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const enableBtn = document.getElementById('enableBtn');
@@ -90,14 +94,17 @@
   const cooldownInput = document.getElementById('cooldown');
   const detectEveryInput = document.getElementById('detectEvery');
   const tolInput = document.getElementById('tol');
+  const dbg = document.getElementById('dbg');
 
-  // State
-  let stream = null, video = null, w = 0, h = 0, guideY = 0;
+  // ---------- State ----------
+  let stream = null, video = null;
+  let w = 1280, h = 720, guideY = 0;
   let running = false, counting = false, startTime = 0, timerTick = null;
   let detector = null;
   const runners = {}; // id -> { laps, last, finishMs, finishStr, done }
   const DEFAULT_COOLDOWN = 2000;
   let frameCount = 0;
+  let framesDrawn = 0;
 
   const log = (...a) => { console.log(...a); logEl.textContent = (logEl.textContent + '\n' + a.join(' ')).slice(-4000); };
 
@@ -111,7 +118,7 @@
     return `${mm}:${ss}`;
   }
 
-  // Ensure table row
+  // ---------- Table helpers ----------
   function ensureRow(id){
     if (runners[id]) return;
     runners[id] = { laps:0, last:0, finishMs:null, finishStr:'-', done:false };
@@ -124,12 +131,10 @@
   function updateRow(id){
     document.getElementById(`laps-${id}`).textContent = runners[id].laps;
     document.getElementById(`fin-${id}`).textContent = runners[id].finishStr;
-    if (runners[id].done){
-      document.getElementById(`r-${id}`).classList.add('done');
-    }
+    if (runners[id].done) document.getElementById(`r-${id}`).classList.add('done');
   }
 
-  // Counting logic
+  // ---------- Counting ----------
   function getCooldown(){ return Math.max(50, parseInt(cooldownInput.value || DEFAULT_COOLDOWN, 10)); }
   function getDetectEvery(){ return Math.max(1, parseInt(detectEveryInput.value || '2', 10)); }
   function getTol(){ return Math.max(4, parseInt(tolInput.value || '24', 10)); }
@@ -151,7 +156,7 @@
     log(`Tag ${id} lap ${r.laps}${r.done ? ' (finished @'+r.finishStr+')' : ''}`);
   }
 
-  // Camera + detector
+  // ---------- Apriltag loader ----------
   async function waitForApriltag(timeoutMs = 5000){
     const start = Date.now();
     while (Date.now() - start < timeoutMs){
@@ -161,6 +166,7 @@
     return false;
   }
 
+  // ---------- Camera (fix applied) ----------
   async function enableCamera(){
     try {
       // Request camera
@@ -169,27 +175,48 @@
         audio: false
       });
 
-      // Hidden video element (we draw to canvas)
+      // Create video element but DO NOT use display:none.
+      // Many browsers will not update video frames if the element is display:none.
+      // Keep it in the DOM but off-screen / tiny and nearly transparent so it can play and draw.
       video = document.createElement('video');
-      video.style.display = 'none';
-      video.srcObject = stream;
-      video.playsInline = true;
+      video.autoplay = true;
       video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      // Off-screen but renderable: position it far left and keep size 1x1.
+      video.style.position = 'absolute';
+      video.style.left = '-10000px';
+      video.style.top = '0';
+      video.style.width = '1px';
+      video.style.height = '1px';
+      video.style.opacity = '0.001'; // tiny opacity but not 0
       document.body.appendChild(video);
 
+      // Wait for playback to start
       await video.play();
-      await new Promise(r => video.onloadedmetadata = r);
+      await new Promise(r => {
+        if (video.readyState >= 2) return r();
+        video.onloadedmetadata = r;
+      });
 
-      // Setup canvas
+      // Set canvas pixel size to video actual resolution (use DPR for crispness)
+      const dpr = window.devicePixelRatio || 1;
       w = video.videoWidth || 1280;
       h = video.videoHeight || 720;
-      canvas.width = w; canvas.height = h;
+      canvas.width = Math.max(320, Math.round(w * dpr));
+      canvas.height = Math.max(180, Math.round(h * dpr));
+      // Keep the CSS width responsive so it fits the screen
+      canvas.style.width = '100%';
+      canvas.style.height = 'auto';
+      // Scale drawing to DPR
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
       guideY = Math.round(h * 0.7);
 
       setStatus('Loading detector...');
-      const ok = await waitForApriltag(5000);
+      const ok = await waitForApriltag(6000);
       if (!ok){
-        alert('AprilTag library failed to load. Check network.');
+        alert('AprilTag library failed to load. Check network or CDN.');
         setStatus('Detector failed');
         return;
       }
@@ -199,22 +226,26 @@
       startBtn.disabled = false;
       stopBtn.disabled = false;
       running = true;
+      frameCount = 0;
+      framesDrawn = 0;
       requestAnimationFrame(loop);
-      log('Camera enabled', w + 'x' + h);
+      log('Camera enabled', `${w}x${h}`, 'DPR=' + dpr);
     } catch (e) {
-      console.error(e);
-      alert('Camera error: ' + (e.message || e));
+      console.error('Camera error', e);
+      alert('Camera error: ' + (e && e.message ? e.message : e));
       setStatus('Camera error');
     }
   }
 
   function stopCamera(){
     if (stream){
-      stream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+      stream.getTracks().forEach(t => { try { t.stop(); } catch(e){} });
     }
     stream = null;
-    if (video){ try{ video.pause(); video.srcObject = null; video.remove(); }catch(e){} }
-    video = null;
+    if (video){
+      try{ video.pause(); video.srcObject = null; video.remove(); }catch(e){}
+      video = null;
+    }
     running = false;
     setStatus('Camera stopped');
     enableBtn.disabled = false;
@@ -222,45 +253,60 @@
     stopBtn.disabled = true;
   }
 
-  // Main render + detect loop
+  // ---------- Main loop ----------
   function loop(){
     if (!running) return;
-    // draw frame
+
+    // Draw the current frame. Only draw if video is playing/ready.
     if (video && video.readyState >= 2){
-      ctx.drawImage(video, 0, 0, w, h);
+      try {
+        // drawImage expects coordinates in canvas CSS pixels scaled by transform set earlier
+        ctx.drawImage(video, 0, 0, w, h);
+        framesDrawn++;
+      } catch (e) {
+        // guard: if drawImage fails, show debug and skip detection
+        console.error('drawImage failed', e);
+        dbg.style.display = '';
+        dbg.textContent = 'drawImage error: ' + (e && e.message ? e.message : e);
+      }
     } else {
-      ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h);
+      // clear canvas to black while not ready
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0,0,w,h);
     }
 
-    // draw guide line
+    // draw guide line (use non-scaled stroke width for visibility)
+    ctx.save();
     ctx.strokeStyle = 'red';
-    ctx.lineWidth = Math.max(3, h/240);
+    ctx.lineWidth = Math.max(3, (h/240));
     ctx.beginPath();
     ctx.moveTo(0, guideY);
     ctx.lineTo(w, guideY);
     ctx.stroke();
+    ctx.restore();
 
-    // detect every N frames
+    // Detection (throttled)
     frameCount++;
     if (detector && (frameCount % getDetectEvery() === 0) && video && video.readyState >= 2){
       let frame = null;
       try {
-        frame = ctx.getImageData(0,0,w,h);
-      } catch (e) {
-        // Some browsers can throw if canvas tainted. Report and bail detection.
+        // getImageData uses the canvas internal pixel buffer; it's OK because video is same origin (getUserMedia)
+        frame = ctx.getImageData(0, 0, w, h);
+      } catch (e){
         console.error('getImageData error', e);
       }
       if (frame){
         let dets = [];
         try {
           dets = detector.detect(frame) || [];
-        } catch (e) {
+        } catch (e){
           console.warn('Detector error', e);
         }
+
         if (dets.length){
           ctx.save();
           ctx.strokeStyle = 'lime';
-          ctx.fillStyle = 'rgba(0,255,0,0.2)';
+          ctx.fillStyle = 'rgba(0,255,0,0.18)';
           ctx.lineWidth = Math.max(2, h/360);
           for (const d of dets){
             const cs = d.corners || d.c || [];
@@ -269,20 +315,18 @@
             const n = Math.max(1, cs.length);
             cx /= n; cy /= n;
 
-            // draw center dot
+            // center dot
             ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
 
-            // draw quad
             if (cs.length === 4){
               ctx.beginPath(); ctx.moveTo(cs[0].x, cs[0].y);
-              for(let i=1;i<4;i++) ctx.lineTo(cs[i].x, cs[i].y);
+              for (let i=1;i<4;i++) ctx.lineTo(cs[i].x, cs[i].y);
               ctx.closePath(); ctx.stroke();
             }
 
             const id = (d.id ?? d.tag_id ?? -1);
             ensureRow(id);
 
-            // count when crossing guide line within tolerance
             if (counting && Math.abs(cy - guideY) <= getTol()){
               countLap(id);
             }
@@ -292,10 +336,18 @@
       }
     }
 
+    // If frames are not drawing at all, show a helpful debug message after a few frames
+    if (frameCount > 10 && framesDrawn === 0){
+      dbg.style.display = '';
+      dbg.textContent = 'No frames drawn — video may be paused or blocked. Ensure permission and that the video element is not display:none.';
+    } else if (framesDrawn > 0){
+      dbg.style.display = 'none';
+    }
+
     requestAnimationFrame(loop);
   }
 
-  // Timer
+  // ---------- Timer ----------
   function startTimer(){
     startTime = Date.now();
     timerEl.textContent = '00:00';
@@ -308,15 +360,15 @@
     timerTick = null;
   }
 
-  // Start / Stop counting
+  // ---------- Start / Stop counting ----------
   function startCounting(){
     if (!detector || !stream) { alert('Enable camera first'); return; }
     if (counting) return;
     counting = true;
     startTimer();
     setStatus('Counting');
-    log('Counting started at ' + new Date().toISOString());
     exportBtn.disabled = true;
+    log('Counting started ' + new Date().toISOString());
   }
 
   function stopCounting(){
@@ -325,25 +377,23 @@
     stopTimer();
     setStatus('Stopped');
 
-    // Mark DNF for anyone who didn't finish required laps
+    // mark DNF for those who didn't finish
     const req = parseInt(reqLaps.value, 10);
     for (const id of Object.keys(runners)){
       const r = runners[id];
-      if (!r.done){
+      if (!r.done || r.laps < req){
         r.finishStr = 'DNF';
         r.finishMs = null;
-        r.done = false; // keep done false, but mark finishStr
         updateRow(id);
       }
     }
 
-    log('Counting stopped at ' + new Date().toISOString());
     exportBtn.disabled = false;
+    log('Counting stopped ' + new Date().toISOString());
   }
 
-  // Export CSV
+  // ---------- Export ----------
   function exportCSV(){
-    // CSV columns: tag_id,laps,finish_str,finish_ms
     const rows = [['tag_id','laps','finish','finish_ms']];
     for (const id of Object.keys(runners)){
       const r = runners[id];
@@ -362,29 +412,23 @@
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     setStatus('CSV exported');
-    log('Exported CSV with', Object.keys(runners).length, 'entries');
+    log('CSV exported');
   }
 
-  // Events
+  // ---------- Events ----------
   enableBtn.addEventListener('click', enableCamera);
-  startBtn.addEventListener('click', () => {
-    startCounting();
-  });
-  stopBtn.addEventListener('click', () => {
-    stopCounting();
-  });
-  exportBtn.addEventListener('click', () => {
-    exportCSV();
-  });
+  startBtn.addEventListener('click', startCounting);
+  stopBtn.addEventListener('click', stopCounting);
+  exportBtn.addEventListener('click', exportCSV);
 
   // stop camera on unload
   window.addEventListener('beforeunload', () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
   });
 
-  // initial status
+  // initial UI
   setStatus('Idle');
-  log('Ready. Click "Enable Camera" to begin. Use Start to start counting, Stop to stop and enable CSV export.');
+  log('Ready — click "Enable Camera". If the canvas stays black, check the small debug badge on the video area for hints.');
 
   </script>
 </body>
