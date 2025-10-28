@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>AprilTag Lap Counter</title>
+<title>AprilTag Lap Counter (with Image Upload)</title>
 <style>
   :root{ --accent:#036; --bg:#fafafa }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
   header{ display:flex; gap:8px; padding:12px; align-items:center; background:#fff; border-bottom:1px solid #e6e6e6; position:sticky; top:0; z-index:10; flex-wrap:wrap }
   button{ background:var(--accent); color:#fff; border:0; padding:10px 12px; border-radius:10px; font-weight:700 }
   button.secondary{ background:#666 }
-  select,input[type=number]{ padding:8px; border-radius:8px; border:1px solid #ddd }
+  select,input[type=number],input[type=file],label{ padding:8px; border-radius:8px; border:1px solid #ddd }
   .timer{ font-weight:700; min-width:72px; text-align:center }
   .container{ max-width:1100px; margin:12px auto; padding:0 12px }
   .video-wrap{ background:#000; border-radius:10px; overflow:hidden; position:relative }
@@ -25,8 +25,10 @@
   .muted{ color:#666; font-size:13px }
   .debugVideo{ position:absolute; right:8px; top:8px; width:160px; height:auto; border:2px solid rgba(255,255,255,0.9); border-radius:6px; display:none; z-index:20 }
   .controls { display:flex; gap:8px; align-items:center; }
+  .results { margin-top:8px; background:#fff; padding:8px; border-radius:8px; border:1px solid #eee; max-height:30vh; overflow:auto }
+  .ok{ color:green; font-weight:700 }
+  .bad{ color:#b02; font-weight:700 }
   .pill{ padding:6px 10px; border-radius:999px; font-size:13px; background:#eef6f8; color:#024047 }
-  .pill.bad{ background:#fff0f0; color:#7a1b1b }
   @media (max-width:640px){ header{ flex-direction:column; align-items:flex-start } }
 </style>
 </head>
@@ -55,24 +57,39 @@
   </header>
 
   <div class="container">
-    <div class="video-wrap" id="videoWrap">
+    <div style="display:flex;gap:12px;align-items:center;margin-top:12px">
+      <!-- Upload UI -->
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="fileInput" type="file" accept="image/*" multiple />
+        <button id="processBtn" class="secondary">Process Images</button>
+      </div>
+      <div class="muted">Filenames should be the tag ID (e.g. 23.jpg). Use multiple images if desired.</div>
+    </div>
+
+    <div class="video-wrap" id="videoWrap" style="margin-top:12px">
       <canvas id="view" aria-label="Camera view with overlay"></canvas>
       <video id="debugVideo" class="debugVideo" playsinline muted></video>
     </div>
 
     <div class="panel">
-      <div class="tbl" aria-live="polite">
-        <table>
-          <thead><tr><th>Tag ID</th><th>Laps</th><th>Finish</th></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
+      <div style="flex:1;min-width:320px">
+        <div class="tbl" aria-live="polite">
+          <table>
+            <thead><tr><th>Tag ID</th><th>Laps</th><th>Finish</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="results" id="uploadResults" style="margin-top:8px">
+          <div class="muted">Upload results will appear here after processing.</div>
+        </div>
       </div>
 
       <div style="width:280px">
         <div class="muted">Status</div>
-        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access.</div>
+        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access, or upload images to test detector.</div>
         <div style="margin-top:12px;" class="muted">Notes</div>
-        <div class="log muted">Place camera so the crossing happens near the red line. Click "Enable Camera" then "Start". If detector initialization is slow the Start button will wait and show progress.</div>
+        <div class="log muted">Upload photos of your printed AprilTags (filenames = tag IDs). The app will run apriltag-js on each image and report whether the detected ID matches the filename. This helps validate the detector independent of the camera stream.</div>
       </div>
     </div>
   </div>
@@ -82,11 +99,13 @@
 
   <script>
   (function(){
-    // Improved detector initialization:
-    // - initDetector() is an async function that retries until apriltag.Detector is available (long timeout)
-    // - Start button now triggers initDetector if needed and waits (with UI feedback)
-    // - status and a detector pill show progress so user knows what's happening
+    // App with image-upload detection helper.
+    // Usage:
+    // - Upload images (filename must be the tag id, e.g. "23.jpg")
+    // - Click "Process Images" to run apriltag-js detect() on each image.
+    // - Successful detections pre-populate the runners table.
 
+    // DOM
     const canvas = document.getElementById('view');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const tbody = document.getElementById('tbody');
@@ -100,6 +119,9 @@
     const debugVideo = document.getElementById('debugVideo');
     const showVideoCb = document.getElementById('showVideo');
     const detectorPill = document.getElementById('detectorPill');
+    const fileInput = document.getElementById('fileInput');
+    const processBtn = document.getElementById('processBtn');
+    const uploadResults = document.getElementById('uploadResults');
 
     // state
     let stream = null, video = null;
@@ -111,13 +133,12 @@
     const DETECT_EVERY = 2;
     let frameCount = 0;
 
+    // utilities
     function setStatus(...parts){ statusEl.textContent = parts.join(' '); console.log(...parts); }
     function setDetectorPill(text, bad=false){ detectorPill.textContent = text; detectorPill.className = bad ? 'pill bad' : 'pill'; }
     function msToMMSS(ms){
-      const s = Math.floor(ms/1000);
-      return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+      const s = Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
     }
-
     function ensureRow(id){
       if (runners[id]) return;
       runners[id] = { laps:0, done:false, last:0, finish:'-' };
@@ -130,40 +151,15 @@
       document.getElementById('fin-'+id).textContent = runners[id].finish;
       if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
     }
-    function countLap(id){
-      if (!counting) return;
-      const now = Date.now();
-      const r = runners[id];
-      if (r.done) return;
-      if (now - r.last < COOLDOWN) return;
-      r.laps++;
-      r.last = now;
-      const req = parseInt(lapsSelect.value, 10);
-      if (r.laps >= req){
-        r.done = true;
-        r.finish = msToMMSS(now - startTime);
-      }
-      updateRow(id);
-      setStatus(`Tag ${id} lap ${r.laps}${r.done ? ' — finished' : ''}`);
-    }
 
-    function allFinished(){
-      const ks = Object.keys(runners);
-      if (ks.length === 0) return false;
-      return ks.every(k => runners[k].done);
-    }
-
-    // robust detector initializer
-    // waits until window.apriltag.Detector exists and successfully constructs an instance
-    // options: timeoutMs (how long to try overall), pollMs (interval)
-    async function initDetector({ timeoutMs = 60000, pollMs = 300 } = {}){
+    // Detector init (robust)
+    async function initDetector({ timeoutMs=60000, pollMs=250 } = {}){
       if (detector) return detector;
       setDetectorPill('Detector: waiting...');
       const start = Date.now();
       while (Date.now() - start < timeoutMs){
         if (window.apriltag && typeof window.apriltag.Detector === 'function'){
           try {
-            // try to construct; some environments may throw on first attempt, so catch and retry
             detector = new window.apriltag.Detector({ families: ['tag36h11'] });
             setDetectorPill('Detector: ready');
             console.log('apriltag detector created');
@@ -171,36 +167,139 @@
           } catch (e){
             console.warn('Detector construct failed, retrying...', e);
             setDetectorPill('Detector: construct error, retrying...');
-            // fallthrough to wait and retry
           }
         } else {
           setDetectorPill('Detector: library loading...');
         }
-        // update UI to show how long we've been waiting
-        const waited = Math.floor((Date.now() - start)/1000);
-        setStatus(`Waiting for detector... ${waited}s`);
-        // Wait
+        setStatus(`Waiting for detector... ${Math.floor((Date.now()-start)/1000)}s`);
         await new Promise(r => setTimeout(r, pollMs));
       }
-      // timed out
       setDetectorPill('Detector: failed', true);
-      setStatus('Detector failed to initialize within timeout. Check network or console.');
-      throw new Error('Detector initialization timeout');
+      setStatus('Detector failed to initialize within timeout. Check network / console.');
+      throw new Error('Detector init timeout');
     }
 
-    // enable camera (explicit user gesture)
+    // process uploaded images
+    processBtn.addEventListener('click', async ()=>{
+      const files = Array.from(fileInput.files || []);
+      if (files.length === 0){
+        setStatus('No files selected.');
+        return;
+      }
+
+      // ensure detector available
+      setStatus('Preparing detector for image processing...');
+      try {
+        await initDetector({ timeoutMs: 45000, pollMs: 200 });
+      } catch (e){
+        console.error('initDetector failed for upload processing:', e);
+        setStatus('Detector not available — cannot process images.');
+        return;
+      }
+
+      uploadResults.innerHTML = '<div class="muted">Processing images…</div>';
+      const results = [];
+
+      // offscreen canvas for decoding each image
+      const tmp = document.createElement('canvas');
+      const tctx = tmp.getContext('2d');
+
+      for (const f of files){
+        const fname = f.name;
+        const basename = fname.replace(/\.[^.]+$/, '');
+        // keep only the numeric part for id if possible
+        const expectedId = basename.match(/^(\d+)$/) ? basename : basename;
+        // load image
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.src = url;
+        await new Promise((res, rej)=>{
+          img.onload = res; img.onerror = ()=> { rej(new Error('Image load error: ' + fname)); };
+        });
+
+        // resize large images down to avoid memory pressure (max dim 1600)
+        const MAX_DIM = 1600;
+        let iw = img.naturalWidth, ih = img.naturalHeight;
+        let scale = 1;
+        if (Math.max(iw, ih) > MAX_DIM) scale = MAX_DIM / Math.max(iw, ih);
+        tmp.width = Math.round(iw * scale); tmp.height = Math.round(ih * scale);
+        tctx.clearRect(0,0,tmp.width,tmp.height);
+        tctx.drawImage(img, 0, 0, tmp.width, tmp.height);
+
+        // get ImageData and run detector
+        let dets = [];
+        try {
+          const frame = tctx.getImageData(0,0,tmp.width,tmp.height);
+          dets = detector.detect(frame) || [];
+        } catch (e){
+          console.error('Detection error on', fname, e);
+        }
+
+        if (dets.length === 0){
+          results.push({ file: fname, ok: false, reason: 'no-detection' });
+        } else {
+          // choose the detection with largest area (best candidate)
+          const best = dets.reduce((a,b)=>{
+            const areaA = polygonArea(a.corners || a.c || []);
+            const areaB = polygonArea(b.corners || b.c || []);
+            return areaA >= areaB ? a : b;
+          });
+          const detectedId = (best.id ?? best.tag_id ?? -1);
+          const matched = String(detectedId) === String(expectedId);
+          results.push({ file: fname, ok: matched, detectedId, expectedId, reason: matched ? 'match' : 'mismatch' });
+          // if matched, pre-register runner
+          if (matched){
+            ensureRow(detectedId);
+            updateRow(detectedId);
+          }
+        }
+        URL.revokeObjectURL(url);
+      }
+
+      // render results
+      uploadResults.innerHTML = '';
+      for (const r of results){
+        const div = document.createElement('div');
+        if (r.ok){
+          div.innerHTML = `<span class="ok">✔</span> ${r.file} → detected ${r.detectedId} (match)`;
+        } else {
+          if (r.reason === 'no-detection'){
+            div.innerHTML = `<span class="bad">✖</span> ${r.file} → no AprilTag detected`;
+          } else if (r.reason === 'mismatch'){
+            div.innerHTML = `<span class="bad">⚠</span> ${r.file} → detected ${r.detectedId} (expected ${r.expectedId})`;
+          } else {
+            div.textContent = `${r.file} → ${r.reason}`;
+          }
+        }
+        uploadResults.appendChild(div);
+      }
+      setStatus('Image processing complete. See results above.');
+    });
+
+    // helper: polygon area
+    function polygonArea(points){
+      if (!points || points.length < 3) return 0;
+      let a = 0;
+      for (let i=0;i<points.length;i++){
+        const j=(i+1)%points.length;
+        a += points[i].x * points[j].y - points[j].x * points[i].y;
+      }
+      return Math.abs(a)/2;
+    }
+
+    // camera + render loop (unchanged from previous)
     async function enableCamera(){
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
         setStatus('Browser does not support getUserMedia.');
         return;
       }
       setStatus('Requesting camera...');
-      try {
+      try{
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false
         });
-      } catch (e){
+      }catch(e){
         setStatus('Camera permission / error:', e.message || e);
         console.error(e);
         return;
@@ -212,6 +311,7 @@
       video.muted = true;
       video.autoplay = true;
 
+      // debug video
       debugVideo.srcObject = stream;
 
       try{ await video.play(); } catch(e){ console.warn('video.play() rejected:', e); }
@@ -232,19 +332,14 @@
       stopBtn.disabled = true;
       exportBtn.disabled = true;
 
-      // start rendering preview loop (detector may still be initializing)
       if (!running){ running = true; requestAnimationFrame(loop); }
     }
 
-    // main render + detect
     function loop(){
       if (!running) return;
       if (video && video.readyState >= 2){
         try { ctx.drawImage(video, 0, 0, w, h); } catch(e) { ctx.clearRect(0,0,canvas.width, canvas.height); }
-      } else {
-        ctx.clearRect(0,0,canvas.width, canvas.height);
-      }
-
+      } else { ctx.clearRect(0,0,canvas.width, canvas.height); }
       ctx.strokeStyle = 'red'; ctx.lineWidth = Math.max(3, h/220);
       ctx.beginPath(); ctx.moveTo(0, guideY); ctx.lineTo(w, guideY); ctx.stroke();
 
@@ -255,12 +350,12 @@
           const dets = detector.detect(frame) || [];
           if (dets.length){
             ctx.save();
-            ctx.strokeStyle = 'lime'; ctx.fillStyle = 'rgba(0,255,0,0.25)'; ctx.lineWidth = Math.max(2, h/360);
+            ctx.strokeStyle = 'lime'; ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.lineWidth = Math.max(2, h/360);
             for (const d of dets){
               const cs = d.corners || d.c || [];
-              let cx = 0, cy = 0;
+              let cx=0, cy=0;
               for (const c of cs){ cx += c.x; cy += c.y; }
-              const n = Math.max(1, cs.length); cx /= n; cy /= n;
+              const n = Math.max(1, cs.length); cx/=n; cy/=n;
               ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
               if (cs.length === 4){
                 ctx.beginPath(); ctx.moveTo(cs[0].x, cs[0].y);
@@ -275,15 +370,30 @@
             }
             ctx.restore();
           }
-        } catch(e){
-          console.error('detect/draw error', e);
+        } catch (e){
+          console.error('detect/draw error:', e);
         }
       }
 
       requestAnimationFrame(loop);
     }
 
-    // start counting (Start button now waits for detector if needed)
+    // counting functions
+    function countLap(id){
+      if (!counting) return;
+      const now = Date.now();
+      const r = runners[id];
+      if (r.done) return;
+      if (now - r.last < COOLDOWN) return;
+      r.laps++; r.last = now;
+      const req = parseInt(lapsSelect.value, 10);
+      if (r.laps >= req){ r.done = true; r.finish = msToMMSS(now - startTime); }
+      updateRow(id);
+      setStatus(`Tag ${id} lap ${r.laps}${r.done ? ' — finished' : ''}`);
+      // check all finished? (optional behavior)
+    }
+
+    // start / stop / export handlers
     async function startCounting(){
       if (!stream){
         setStatus('Camera not enabled. Click "Enable Camera" first.');
@@ -292,31 +402,25 @@
       startBtn.disabled = true;
       stopBtn.disabled = true;
       exportBtn.disabled = true;
-
-      // ensure detector is initialized (Start will wait here if needed)
-      setStatus('Ensuring detector is ready (may take a few seconds)...');
+      // ensure detector ready before counting for best UX
+      setStatus('Ensuring detector is ready...');
       try {
         await initDetector({ timeoutMs: 60000, pollMs: 300 });
       } catch (e){
         console.error('initDetector failed:', e);
-        startBtn.disabled = false;
         setDetectorPill('Detector: failed', true);
-        setStatus('Detector failed to initialize. Check console and network.');
+        setStatus('Detector failed to initialize. See console/network.');
+        startBtn.disabled = false;
         return;
       }
-
-      // now begin counting
       counting = true;
       startTime = Date.now();
       timerEl.textContent = '00:00';
-      timerInterval = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now() - startTime); }, 1000);
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      exportBtn.disabled = true;
+      timerInterval = setInterval(()=> { timerEl.textContent = msToMMSS(Date.now() - startTime); }, 1000);
+      startBtn.disabled = true; stopBtn.disabled = false; exportBtn.disabled = true;
       setStatus('Counting started');
     }
 
-    // stop counting: mark DNF and enable export
     function stopCounting(){
       if (!counting) return;
       counting = false;
@@ -324,14 +428,9 @@
       const req = parseInt(lapsSelect.value, 10);
       for (const id of Object.keys(runners)){
         const r = runners[id];
-        if (!r.done){
-          r.finish = 'DNF';
-          updateRow(id);
-        }
+        if (!r.done){ r.finish = 'DNF'; updateRow(id); }
       }
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      exportBtn.disabled = false;
+      startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = false;
       setStatus('Stopped — results ready for export');
     }
 
@@ -353,38 +452,23 @@
       exportBtn.disabled = true;
     }
 
-    function stopCamera(){
-      if (stream){
-        for (const t of stream.getTracks()) try{ t.stop(); } catch(e){}
-      }
-      stream = null; video = null; running = false; detector = detector; // keep detector so you can re-enable camera without reloading lib
-    }
-    window.addEventListener('beforeunload', stopCamera);
-
-    showVideoCb.addEventListener('change', ()=>{ debugVideo.style.display = showVideoCb.checked ? 'block' : 'none'; });
-
+    // camera enable + controls wiring
     enableBtn.addEventListener('click', async ()=>{
       enableBtn.disabled = true;
-      try {
-        await enableCamera();
-      } catch (e){
-        console.error('enableCamera error', e);
-        setStatus('Enable camera failed:', e.message || e);
-        enableBtn.disabled = false;
-      }
+      try { await enableCamera(); } catch (e) { console.error(e); setStatus('Enable camera failed:', e.message || e); enableBtn.disabled = false; }
     });
-
-    startBtn.addEventListener('click', ()=>{ startCounting().catch(e => { console.error(e); setStatus('Start failed:', e.message || e); startBtn.disabled = false; }); });
+    startBtn.addEventListener('click', ()=> startCounting().catch(e => { console.error(e); setStatus('Start failed:', e.message || e); startBtn.disabled = false; }));
     stopBtn.addEventListener('click', stopCounting);
     exportBtn.addEventListener('click', exportCSV);
+    showVideoCb.addEventListener('change', ()=> { debugVideo.style.display = showVideoCb.checked ? 'block' : 'none'; });
 
-    // initial UI
-    setStatus('Idle. Click "Enable Camera" to allow camera access.');
+    // initial UI states
+    setStatus('Idle. Click "Enable Camera" or upload images to verify detector.');
     setDetectorPill('Detector: unknown');
-    setTimeout(()=>{ if (!window.apriltag) console.warn('apriltag-js not detected yet — check network/console'); }, 1200);
+    setTimeout(()=>{ if (!window.apriltag) console.warn('apriltag-js not detected yet — check network/console'); }, 1000);
 
     // expose debug helpers
-    window._lapApp = { runners, stopCamera, initDetector };
+    window._lapApp = { runners, stopCamera: () => { if (stream) for (const t of stream.getTracks()) try{ t.stop(); }catch(e){} }, initDetector };
 
   })();
   </script>
