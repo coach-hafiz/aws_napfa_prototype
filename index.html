@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>AprilTag Lap Counter — SVG Template Fallback</title>
+<title>AprilTag Lap Counter — family: tagStandard52h13 (selectable)</title>
 <style>
   :root{ --accent:#036; --bg:#fafafa }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
   header{ display:flex; gap:8px; padding:12px; align-items:center; background:#fff; border-bottom:1px solid #e6e6e6; position:sticky; top:0; z-index:10; flex-wrap:wrap }
   button{ background:var(--accent); color:#fff; border:0; padding:10px 12px; border-radius:10px; font-weight:700 }
   button.secondary{ background:#666 }
-  select,input[type=file]{ padding:8px; border-radius:8px; border:1px solid #ddd; background:#fff }
+  select,input[type=number]{ padding:8px; border-radius:8px; border:1px solid #ddd }
   .timer{ font-weight:700; min-width:72px; text-align:center }
   .container{ max-width:1100px; margin:12px auto; padding:0 12px }
   .video-wrap{ background:#000; border-radius:10px; overflow:hidden; position:relative }
@@ -23,46 +23,52 @@
   tr.done{ background:#e9f6ec }
   .log{ white-space:pre-wrap; font-size:13px; color:#333; margin-top:8px }
   .muted{ color:#666; font-size:13px }
-  .templates{ display:flex; gap:8px; flex-wrap:wrap; padding:8px 0 }
-  .templateItem{ display:flex; flex-direction:column; align-items:center; gap:6px; width:96px; font-size:12px }
-  .templateItem img{ width:80px; height:80px; object-fit:contain; border-radius:6px; border:1px solid #eee; background:#fff }
-  .pill{ padding:6px 10px; border-radius:999px; font-size:13px; background:#eef6f8; color:#024047 }
-  .pill.bad{ background:#fff0f0; color:#7a1b1b }
-  .small{ font-size:12px; color:#444 }
+  .debugVideo{ position:absolute; right:8px; top:8px; width:160px; height:auto; border:2px solid rgba(255,255,255,0.9); border-radius:6px; display:none; z-index:20 }
+  .controls { display:flex; gap:8px; align-items:center; }
+  .familyNote{ font-size:13px; color:#555; margin-left:8px }
   @media (max-width:640px){ header{ flex-direction:column; align-items:flex-start } }
 </style>
 </head>
 <body>
   <header>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
       <button id="stopBtn" class="secondary" disabled>Stop</button>
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+      <button id="testBtn" class="secondary" disabled>Test Detector</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-left:6px"><input id="showVideo" type="checkbox"/> Show video</label>
     </div>
 
     <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
+      <label class="muted">Family</label>
+      <select id="familySelect" aria-label="Tag family">
+        <!-- default to tagStandard52h13 as requested -->
+        <option value="tagStandard52h13">tagStandard52h13</option>
+        <option value="tag36h11">tag36h11</option>
+        <option value="tag36h10">tag36h10</option>
+        <option value="tag25h9">tag25h9</option>
+        <option value="tag16h5">tag16h5</option>
+        <option value="tagStandard41h12">tagStandard41h12</option>
+      </select>
+      <span class="familyNote" id="familyNote">select family, then Enable Camera</span>
+
       <label class="muted">Laps</label>
       <select id="lapsSelect" aria-label="Number of laps">
-        <option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
-        <option>7</option><option>8</option><option>9</option><option>10</option>
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+        <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
+        <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+        <option value="10">10</option><option value="11">11</option><option value="12">12</option>
       </select>
 
       <div class="timer" id="timer">00:00</div>
-      <div id="detectorPill" class="pill">Detector: unknown</div>
     </div>
   </header>
 
   <div class="container">
-    <div style="margin:10px 0">
-      <div class="small">Upload SVG tag images (file name without extension will be used as Tag ID). These are used as a fallback template matcher if the WASM apriltag detector fails to initialize.</div>
-      <input id="svgInput" type="file" accept=".svg" multiple />
-      <div class="templates" id="templates"></div>
-    </div>
-
-    <div class="video-wrap">
+    <div class="video-wrap" id="videoWrap">
       <canvas id="view" aria-label="Camera view with overlay"></canvas>
-      <video id="debugVideo" playsinline muted style="position:absolute; right:8px; top:8px; width:160px; border-radius:6px; display:none"></video>
+      <video id="debugVideo" class="debugVideo" playsinline muted></video>
     </div>
 
     <div class="panel">
@@ -73,11 +79,11 @@
         </table>
       </div>
 
-      <div style="width:300px">
+      <div style="width:320px">
         <div class="muted">Status</div>
-        <div id="status" class="log">Idle. Upload SVGs or click Enable Camera.</div>
+        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access and initialize detector for the selected family.</div>
         <div style="margin-top:12px;" class="muted">Notes</div>
-        <div class="log muted">If the apriltag WASM fails, the uploaded SVGs will be rasterized and used for template matching (best for small number of distinct tags). Template matching is slower and less robust than apriltag decoding; use apriltag when available.</div>
+        <div class="log muted">If the detector cannot find the selected family it will try fallbacks (tag36h11 etc.). If your apriltag-js WASM build doesn't include the family you selected, create or use a build that includes that family (see AprilRobotics/apriltag).</div>
       </div>
     </div>
   </div>
@@ -87,23 +93,13 @@
 
   <script>
   (function(){
-    // App supports two detection modes:
-    // 1) apriltag-js (WASM) when available — preferred.
-    // 2) Template matching fallback using user-uploaded SVG images (filename => tag ID).
-    //
-    // Template matcher approach:
-    // - SVG files are rasterized into small grayscale templates.
-    // - Each video frame is downscaled to a small width (e.g., 320px) for speed.
-    // - For each template we perform a coarse sliding-window normalized cross-correlation
-    //   at a stride to find the best match. If correlation > threshold we call it a detection.
-    // - This is a simple fallback useful for testing when WASM can't initialize; not as robust as apriltag decoding.
+    // Updated lap counter with selectable family support and robust detector init.
+    // Tries the selected family first (default tagStandard52h13). If Detector creation fails,
+    // it will try fallback families and report status.
 
     // DOM
     const canvas = document.getElementById('view');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const debugVideo = document.getElementById('debugVideo');
-    const svgInput = document.getElementById('svgInput');
-    const templatesDiv = document.getElementById('templates');
     const tbody = document.getElementById('tbody');
     const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
@@ -111,34 +107,25 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const exportBtn = document.getElementById('exportBtn');
+    const testBtn = document.getElementById('testBtn');
+    const familySelect = document.getElementById('familySelect');
+    const familyNote = document.getElementById('familyNote');
     const lapsSelect = document.getElementById('lapsSelect');
-    const detectorPill = document.getElementById('detectorPill');
+    const debugVideo = document.getElementById('debugVideo');
+    const showVideoCb = document.getElementById('showVideo');
 
-    // state
+    // State
     let stream = null, video = null;
     let w = 1280, h = 720, guideY = Math.round(h*0.7);
     let running = false, counting = false, startTime = 0, timerInterval = null;
     let detector = null;
     const runners = {}; // id -> {laps, done, last, finish}
-    const COOLDOWN = 1500;
+    const COOLDOWN = 1500; // ms between counts for same tag
     let frameCount = 0;
 
-    // Template matcher data structure:
-    // templates = [{ id, imgEl, w, h, data: Float32Array(normalized grayscale), mean, std, displayUrl }]
-    const templates = [];
-
-    // matcher settings (tune for speed/accuracy)
-    const FRAME_DOWNWIDTH = 320;    // width to downscale frames for matching
-    const STRIDE = 8;               // sliding window stride
-    const MATCH_THRESHOLD = 0.55;   // normalized cross-correlation threshold (0..1)
-
-    // helpers
+    // Helpers
     function setStatus(...parts){ statusEl.textContent = parts.join(' '); console.log(...parts); }
-    function setDetectorPill(text, bad=false){ detectorPill.textContent = text; detectorPill.className = bad ? 'pill bad' : 'pill'; }
-    function msToMMSS(ms){
-      const s = Math.floor(ms/1000);
-      return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-    }
+    function msToMMSS(ms){ const s = Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
 
     function ensureRow(id){
       if (runners[id]) return;
@@ -170,230 +157,151 @@
       setStatus(`Tag ${id} lap ${r.laps}${r.done ? ' — finished' : ''}`);
     }
 
-    // ---------- SVG upload & template creation ----------
-    svgInput.addEventListener('change', async (ev)=>{
-      const files = Array.from(ev.target.files || []);
-      for (const file of files){
-        if (!file.name.toLowerCase().endsWith('.svg')) continue;
-        const id = file.name.replace(/\.svg$/i,'');
-        const url = URL.createObjectURL(file);
-        try {
-          const tpl = await rasterizeSvgToTemplate(url, id);
-          templates.push(tpl);
-          renderTemplateItem(tpl);
-          setStatus(`Template ${id} uploaded`);
-          URL.revokeObjectURL(url);
-        } catch (e){
-          console.error('Failed to rasterize', file.name, e);
-          setStatus('Failed to process', file.name);
-        }
-      }
-    });
-
-    // Render thumbnail UI for uploaded template
-    function renderTemplateItem(tpl){
-      const div = document.createElement('div'); div.className = 'templateItem';
-      const img = document.createElement('img'); img.src = tpl.displayUrl;
-      const label = document.createElement('div'); label.textContent = tpl.id;
-      const removeBtn = document.createElement('button'); removeBtn.textContent = 'Remove'; removeBtn.style.fontSize='12px';
-      removeBtn.addEventListener('click', ()=>{
-        const idx = templates.indexOf(tpl);
-        if (idx >= 0) templates.splice(idx,1);
-        div.remove();
-        setStatus('Removed template ' + tpl.id);
-      });
-      div.appendChild(img); div.appendChild(label); div.appendChild(removeBtn);
-      templatesDiv.appendChild(div);
+    function allFinished(){
+      const ks = Object.keys(runners); if (ks.length === 0) return false;
+      return ks.every(k => runners[k].done);
     }
 
-    // Rasterize an SVG file URL into a small grayscale normalized template
-    async function rasterizeSvgToTemplate(url, id){
-      // choose template pixel size (square)
-      const T = 96; // template size in px (can be tuned)
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = url;
-      await new Promise((r,rej)=>{
-        img.onload = r; img.onerror = rej;
+    // Wait for apriltag-js to be available
+    function waitForAprilTag(timeout=5000){
+      return new Promise(resolve=>{
+        if (window.apriltag && typeof window.apriltag.Detector === 'function') return resolve(true);
+        const start = Date.now();
+        const iv = setInterval(()=>{
+          if (window.apriltag && typeof window.apriltag.Detector === 'function'){ clearInterval(iv); resolve(true); }
+          else if (Date.now() - start > timeout){ clearInterval(iv); resolve(false); }
+        }, 150);
       });
-      // draw into offscreen canvas and extract grayscale
-      const oc = document.createElement('canvas'); oc.width = T; oc.height = T;
-      const octx = oc.getContext('2d', { willReadFrequently: true });
-      // clear to white so black-on-white tags render correctly
-      octx.fillStyle = '#ffffff'; octx.fillRect(0,0,T,T);
-      // draw image centered and scaled to fit
-      const ar = img.width / img.height;
-      let dw = T, dh = T;
-      if (ar > 1){ dh = Math.round(T / ar); } else { dw = Math.round(T * ar); }
-      const dx = Math.round((T - dw)/2), dy = Math.round((T - dh)/2);
-      octx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
-      // get imageData
-      const idata = octx.getImageData(0,0,T,T).data;
-      const gray = new Float32Array(T*T);
-      let sum = 0;
-      for (let i=0, j=0;i<idata.length;i+=4,j++){
-        // convert to grayscale (luminance). Use 0..1, invert so tags (dark) become high values if desired — we keep raw luminance
-        const lum = (0.299*idata[i] + 0.587*idata[i+1] + 0.114*idata[i+2]) / 255;
-        gray[j] = lum;
-        sum += gray[j];
-      }
-      const mean = sum / gray.length;
-      // compute standard deviation
-      let ssum = 0;
-      for (let i=0;i<gray.length;i++){ const d = gray[i]-mean; ssum += d*d; }
-      const std = Math.sqrt(Math.max(1e-6, ssum / gray.length));
-      // normalize template (zero-mean)
-      const norm = new Float32Array(gray.length);
-      for (let i=0;i<gray.length;i++) norm[i] = (gray[i] - mean) / std;
-      // generate a display URL (use the rasterized PNG)
-      const displayUrl = oc.toDataURL('image/png');
-      return { id, imgEl: img, w:T, h:T, data: norm, mean, std, displayUrl };
     }
 
-    // ---------- Template matching core ----------
-    // Downscale current frame into grayscale Float32Array and return {w,h,data}
-    function getDownscaledGrayFrame(frameWidth = FRAME_DOWNWIDTH){
-      // target width
-      const srcW = canvas.width, srcH = canvas.height;
-      const scale = Math.max(1, srcW / frameWidth);
-      const tw = Math.max(32, Math.round(srcW / scale));
-      const th = Math.max(32, Math.round(srcH / scale));
-      // draw small frame into temp canvas
-      const oc = document.createElement('canvas'); oc.width = tw; oc.height = th;
-      const octx = oc.getContext('2d', { willReadFrequently: true });
+    // Try to create a Detector with a families list; returns detector or throws
+    function tryCreateDetector(families){
       try {
-        octx.drawImage(video, 0, 0, srcW, srcH, 0, 0, tw, th);
+        const d = new window.apriltag.Detector({ families });
+        return d;
       } catch (e){
-        // fallback: use canvas content
-        octx.drawImage(canvas, 0, 0, srcW, srcH, 0, 0, tw, th);
+        // Creation may throw if family not supported by WASM build
+        throw e;
       }
-      const id = octx.getImageData(0,0,tw,th).data;
-      const gray = new Float32Array(tw*th);
-      let sum = 0;
-      for (let i=0,j=0;i<id.length;i+=4,j++){
-        const lum = (0.299*id[i] + 0.587*id[i+1] + 0.114*id[i+2]) / 255;
-        gray[j] = lum;
-        sum += gray[j];
-      }
-      const mean = sum / gray.length;
-      let ssum = 0;
-      for (let i=0;i<gray.length;i++){ const d = gray[i]-mean; ssum += d*d; }
-      const std = Math.sqrt(Math.max(1e-6, ssum / gray.length));
-      // normalized
-      const norm = new Float32Array(gray.length);
-      for (let i=0;i<gray.length;i++) norm[i] = (gray[i] - mean) / std;
-      return { w: tw, h: th, data: norm };
     }
 
-    // perform coarse sliding window normalized cross-correlation for a single template over downscaled frame
-    // returns best {score,x,y} in frame coordinates (scaled)
-    function matchTemplate(frame, tpl, stride = STRIDE){
-      const fw = frame.w, fh = frame.h;
-      const tw = tpl.w, th = tpl.h;
-      if (tw > fw || th > fh) return null;
-      const fd = frame.data, td = tpl.data;
-      let best = { score: -Infinity, x: 0, y: 0 };
-      // for speed compute dot product over sliding window with stride
-      for (let y=0; y <= fh - th; y += stride){
-        let base = y * fw;
-        for (let x=0; x <= fw - tw; x += stride){
-          // compute dot product between fd window and td
-          let dot = 0;
-          let idx = base + x;
-          for (let ty=0; ty < th; ty++){
-            let fidx = idx + ty*fw;
-            let tidx = ty*tw;
-            for (let tx=0; tx < tw; tx++){
-              dot += fd[fidx + tx] * td[tidx + tx];
-            }
-          }
-          // normalize by template length => since both are normalized arrays, dot approximates correlation
-          const score = dot / (tw * th);
-          if (score > best.score){
-            best.score = score;
-            best.x = x; best.y = y;
-          }
-        }
-      }
-      // convert best.x,y from downscaled coords to original canvas coordinates
-      const scaleX = canvas.width / fw;
-      const scaleY = canvas.height / fh;
-      return { score: best.score, x: Math.round(best.x * scaleX + (tpl.w*scaleX)/2), y: Math.round(best.y * scaleY + (tpl.h*scaleY)/2) };
-    }
-
-    // ---------- Camera & detector initialization ----------
-    async function initCamera(){
+    // Initialize camera and detector — tries selected family first, then fallbacks
+    async function enableCameraAndDetector(){
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        setStatus('getUserMedia not supported');
+        setStatus('Browser does not support getUserMedia.');
         return;
       }
       setStatus('Requesting camera...');
-      try{
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-      }catch(e){
-        setStatus('Camera permission error: ' + (e.message||e));
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+      } catch (e) {
+        setStatus('Camera permission error:', e.message || e);
         console.error(e);
+        enableBtn.disabled = false;
         return;
       }
 
-      video = document.createElement('video');
-      video.srcObject = stream;
-      video.muted = true;
-      video.playsInline = true;
-      video.autoplay = true;
+      // prepare video sources
+      video = document.createElement('video'); video.srcObject = stream; video.playsInline = true; video.muted = true; video.autoplay = true;
       debugVideo.srcObject = stream;
 
-      try { await video.play(); } catch(e){ console.warn('video.play rejected', e); }
+      try { await video.play(); } catch (e){ console.warn('video.play() may be blocked:', e); }
       await new Promise(r=>{
         if (video.readyState >= 2) return r();
-        const t = setTimeout(r, 1200);
+        const t = setTimeout(r, 1000);
         video.onloadedmetadata = ()=>{ clearTimeout(t); r(); };
       });
 
-      w = video.videoWidth || w; h = video.videoHeight || h;
-      canvas.width = w; canvas.height = h;
-      guideY = Math.round(h * 0.7);
+      // canvas sizing
+      w = video.videoWidth || w; h = video.videoHeight || h; canvas.width = w; canvas.height = h; guideY = Math.round(h*0.7);
 
-      setStatus('Camera ready. Initializing detector...');
-      enableBtn.disabled = true;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      exportBtn.disabled = true;
-
-      // attempt to create apriltag detector but don't block — if fails we will fallback to templates when starting
-      tryInitApriltag();
-      if (!running){ running = true; requestAnimationFrame(loop); }
-    }
-
-    // try to initialize apriltag but allow long retries; we show pill state
-    async function tryInitApriltag(){
-      const start = Date.now();
-      setDetectorPill('Detector: loading...');
-      const timeoutMs = 60000;
-      while (Date.now() - start < timeoutMs){
-        if (window.apriltag && typeof window.apriltag.Detector === 'function'){
-          try {
-            detector = new window.apriltag.Detector({ families: ['tag36h11'] });
-            setDetectorPill('Detector: ready');
-            setStatus('apriltag detector ready');
-            return;
-          } catch (e){
-            console.warn('Detector construct failed, retrying', e);
-            setDetectorPill('Detector: construct error, retrying...');
-          }
-        } else {
-          setDetectorPill('Detector: library loading...');
-        }
-        await new Promise(r=>setTimeout(r, 300));
+      // wait for apriltag-js
+      const ok = await waitForAprilTag(5000);
+      if (!ok) {
+        setStatus('apriltag-js not loaded. Check network/console.');
+        enableBtn.disabled = false;
+        return;
       }
-      setDetectorPill('Detector: unavailable — using template fallback', true);
-      setStatus('Detector failed to initialize within timeout. You can upload SVG templates for fallback detection.');
+
+      // Attempt to initialize Detector with selected family, fallback to others if necessary
+      const selected = familySelect.value;
+      const fallbacks = ['tag36h11','tag36h10','tag25h9','tag16h5','tagStandard41h12'];
+      let tried = [];
+      let created = null;
+      let successfulFamily = null;
+
+      // first try selected family (single)
+      tried.push(selected);
+      try {
+        setStatus(`Initializing detector for ${selected} ...`);
+        created = tryCreateDetector([selected]);
+        successfulFamily = selected;
+      } catch (e) {
+        console.warn(`Failed to create detector for ${selected}:`, e && e.message ? e.message : e);
+        // try fallbacks in order
+        for (const f of fallbacks){
+          if (f === selected) continue;
+          tried.push(f);
+          try {
+            setStatus(`Trying fallback family ${f} ...`);
+            created = tryCreateDetector([f]);
+            successfulFamily = f;
+            break;
+          } catch (ex) {
+            console.warn(`Failed to create detector for ${f}:`, ex && ex.message ? ex.message : ex);
+            created = null;
+          }
+        }
+      }
+
+      detector = created;
+      if (detector){
+        setStatus(`Detector ready (family: ${successfulFamily}). Click Start to begin.`);
+        familyNote.textContent = `Detector family: ${successfulFamily}`;
+        startBtn.disabled = false;
+        testBtn.disabled = false;
+        enableBtn.disabled = true;
+        stopBtn.disabled = true;
+        exportBtn.disabled = true;
+        // start rendering preview immediately so user sees guide line
+        if (!running){
+          running = true;
+          requestAnimationFrame(loop);
+        }
+      } else {
+        setStatus(`Detector init FAILED. Tried: ${tried.join(', ')}. See console for details.`);
+        familyNote.textContent = `Detector failed for: ${tried.join(', ')}`;
+        enableBtn.disabled = false;
+      }
     }
 
-    // ---------- Main loop ----------
+    // capture and run a quick test detection to show if any tags are found
+    async function testDetectorOnce(){
+      if (!detector) { setStatus('Detector not ready'); return; }
+      if (!video || video.readyState < 2) { setStatus('Video not ready for test'); return; }
+      try {
+        // draw current frame (small) and run detect
+        ctx.drawImage(video, 0, 0, w, h);
+        const frame = ctx.getImageData(0, 0, w, h);
+        const dets = detector.detect(frame) || [];
+        if (dets.length){
+          setStatus(`Test: detected ${dets.length} tag(s). Example id: ${dets[0].id ?? dets[0].tag_id}`);
+        } else {
+          setStatus('Test: no tags detected in current frame (move a tag into view and re-run test).');
+        }
+      } catch (e){
+        console.error('Test detect failed:', e);
+        setStatus('Test detect failed: see console for error');
+      }
+    }
+
+    // main render + detection loop
     function loop(){
       if (!running) return;
-      // draw video frame
+      // draw base
       if (video && video.readyState >= 2){
         try { ctx.drawImage(video, 0, 0, w, h); } catch(e){ ctx.clearRect(0,0,w,h); }
       } else {
@@ -404,72 +312,55 @@
       ctx.strokeStyle = 'red'; ctx.lineWidth = Math.max(3, h/220);
       ctx.beginPath(); ctx.moveTo(0, guideY); ctx.lineTo(w, guideY); ctx.stroke();
 
+      // detection
       frameCount++;
-
-      // prefer apriltag detection if ready
-      if (detector && (frameCount % 2 === 0) && video && video.readyState >= 2){
+      if (detector && video && video.readyState >= 2 && (frameCount % 2 === 0)){
         try {
           const frame = ctx.getImageData(0,0,w,h);
           const dets = detector.detect(frame) || [];
-          for (const d of dets){
-            const cs = d.corners || d.c || [];
-            let cx=0, cy=0;
-            for (const c of cs){ cx += c.x; cy += c.y; }
-            const n = Math.max(1, cs.length); cx /= n; cy /= n;
-            const id = (d.id ?? d.tag_id ?? -1);
-            ensureRow(id);
-            // draw marker
+          if (dets.length){
             ctx.save();
-            ctx.strokeStyle = 'lime'; ctx.fillStyle = 'rgba(0,255,0,0.25)'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(cx, cy, Math.max(4,h/200), 0, Math.PI*2); ctx.fill();
-            if (cs.length === 4){ ctx.beginPath(); ctx.moveTo(cs[0].x, cs[0].y); for (let i=1;i<4;i++) ctx.lineTo(cs[i].x, cs[i].y); ctx.closePath(); ctx.stroke(); }
+            ctx.strokeStyle = 'lime'; ctx.fillStyle = 'rgba(0,255,0,0.25)'; ctx.lineWidth = Math.max(2, h/360);
+            for (const d of dets){
+              const cs = d.corners || d.c || [];
+              let cx=0, cy=0;
+              for (const c of cs){ cx += c.x; cy += c.y; }
+              const n = Math.max(1, cs.length); cx/=n; cy/=n;
+
+              ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
+              if (cs.length===4){
+                ctx.beginPath(); ctx.moveTo(cs[0].x, cs[0].y); for (let i=1;i<4;i++) ctx.lineTo(cs[i].x, cs[i].y); ctx.closePath(); ctx.stroke();
+              }
+
+              const id = (d.id ?? d.tag_id ?? -1);
+              ensureRow(id);
+              if (counting && Math.abs(cy - guideY) < Math.max(16, h/60)){
+                countLap(id);
+              }
+            }
             ctx.restore();
-            if (counting && Math.abs(cy - guideY) < Math.max(16, h/60)) countLap(id);
           }
         } catch (e){
-          console.error('apriltag detect error', e);
-        }
-      } else if (templates.length > 0 && (frameCount % 3 === 0) && video && video.readyState >= 2){
-        // template fallback
-        const frame = getDownscaledGrayFrame(FRAME_DOWNWIDTH);
-        for (const tpl of templates){
-          const m = matchTemplate(frame, tpl, STRIDE);
-          if (m && m.score >= MATCH_THRESHOLD){
-            // mark detection and count
-            ctx.save();
-            ctx.strokeStyle = 'aqua'; ctx.fillStyle = 'rgba(0,255,255,0.2)'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(m.x, m.y, Math.max(6, h/160), 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.restore();
-            ensureRow(tpl.id);
-            if (counting && Math.abs(m.y - guideY) < Math.max(16, h/60)) countLap(tpl.id);
-          }
+          console.error('detect loop error:', e);
         }
       }
 
       requestAnimationFrame(loop);
     }
 
-    // ---------- Controls ----------
-    enableBtn.addEventListener('click', async ()=>{
-      enableBtn.disabled = true;
-      try { await initCamera(); } catch(e){ console.error(e); enableBtn.disabled = false; }
-    });
-
-    startBtn.addEventListener('click', async ()=>{
-      if (!stream){ setStatus('Enable camera first'); return; }
-      // If apriltag not ready and no templates uploaded, inform user
-      if (!detector && templates.length === 0){
-        setStatus('Detector not ready and no templates uploaded. Upload SVGs or try waiting a few seconds.');
-        return;
-      }
-      counting = true; startTime = Date.now();
+    // start / stop handlers
+    function startCounting(){
+      if (!stream || !detector){ setStatus('Enable camera and make sure detector is ready first.'); return; }
+      if (counting) return;
+      counting = true;
+      startTime = Date.now();
       timerEl.textContent = '00:00';
       timerInterval = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now() - startTime); }, 1000);
       startBtn.disabled = true; stopBtn.disabled = false; exportBtn.disabled = true;
       setStatus('Counting started');
-    });
+    }
 
-    stopBtn.addEventListener('click', ()=>{
+    function stopCounting(){
       if (!counting) return;
       counting = false;
       clearInterval(timerInterval); timerInterval = null;
@@ -482,18 +373,18 @@
         }
       }
       startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = false;
-      setStatus('Stopped — results ready for export');
-    });
+      setStatus('Counting stopped — results ready for export');
+    }
 
-    exportBtn.addEventListener('click', ()=>{
+    function exportCSV(){
       const rows = [['Tag ID','Laps','Finish']];
       for (const id of Object.keys(runners)){
         const r = runners[id];
         rows.push([id, String(r.laps), r.finish]);
       }
-      const csv = rows.map(r => r.map(cell => {
-        if (typeof cell === 'string' && cell.includes(',')) return `"${cell.replace(/"/g,'""')}"`;
-        return cell;
+      const csv = rows.map(r=> r.map(c=>{
+        if (typeof c === 'string' && c.includes(',')) return `"${c.replace(/"/g,'""')}"`;
+        return c;
       }).join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -501,23 +392,43 @@
       URL.revokeObjectURL(url);
       setStatus('CSV exported');
       exportBtn.disabled = true;
+    }
+
+    function stopCamera(){
+      if (stream){ for (const t of stream.getTracks()) try{ t.stop(); }catch(e){} }
+      stream = null; video = null; running = false;
+    }
+    window.addEventListener('beforeunload', stopCamera);
+
+    // Toggle debug video
+    showVideoCb.addEventListener('change', ()=>{ debugVideo.style.display = showVideoCb.checked ? 'block' : 'none'; });
+
+    // Button wiring
+    enableBtn.addEventListener('click', async ()=>{
+      enableBtn.disabled = true;
+      try {
+        await enableCameraAndDetector();
+      } catch (e){
+        console.error('enable error:', e);
+        setStatus('Enable failed:', e && e.message ? e.message : e);
+        enableBtn.disabled = false;
+      }
     });
+    testBtn.addEventListener('click', testDetectorOnce);
+    startBtn.addEventListener('click', startCounting);
+    stopBtn.addEventListener('click', stopCounting);
+    exportBtn.addEventListener('click', exportCSV);
 
-    // cleanup
-    window.addEventListener('beforeunload', ()=>{
-      if (stream) for (const t of stream.getTracks()) try{ t.stop(); }catch(e){}
-    });
-
-    // debug helper: show raw video (click canvas to toggle)
-    canvas.addEventListener('dblclick', ()=>{ debugVideo.style.display = debugVideo.style.display === 'none' ? 'block' : 'none'; });
-
-    // expose for console debugging
-    window._lapApp = { templates, templatesCount: () => templates.length, detectorReady: () => !!detector, runners };
+    // Expose debug API in console
+    window._lapApp = { runners, stopCamera, detectorRef: ()=>detector, info: ()=>({ stream: !!stream, detector: !!detector }) };
 
     // initial UI
-    setDetectorPill('Detector: initializing...');
-    setStatus('Idle. Upload SVGs (optional) and click Enable Camera.');
-    tryInitApriltag(); // start trying in background
+    setStatus('Idle. Select family (default tagStandard52h13) then click "Enable Camera".');
+    familyNote.textContent = 'Selected family: ' + familySelect.value;
+
+    // update family note on change
+    familySelect.addEventListener('change', ()=>{ familyNote.textContent = 'Selected family: ' + familySelect.value; });
+
   })();
   </script>
 </body>
