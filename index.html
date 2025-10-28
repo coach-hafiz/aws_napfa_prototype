@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>AprilTag Lap Counter — tag family selectable (robust loader)</title>
+<title>AprilTag Lap Counter — WASM (robust init)</title>
 <style>
   :root{ --accent:#036; --bg:#fafafa }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
@@ -43,7 +43,6 @@
     <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
       <label class="muted">Family</label>
       <select id="familySelect" aria-label="Tag family" title="Choose tag family">
-        <!-- Default changed to tag36h11 for best CDN support -->
         <option value="tag36h11" selected>tag36h11</option>
         <option value="tag36h10">tag36h10</option>
         <option value="tag25h9">tag25h9</option>
@@ -81,51 +80,51 @@
 
       <div style="width:320px">
         <div class="muted">Status</div>
-        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access and initialize detector for the selected family.</div>
+        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access and initialize detector.</div>
         <div style="margin-top:12px;" class="muted">Notes</div>
         <div class="log muted">
-          If the chosen family isn’t compiled into the CDN build, this app will try fallbacks (tag36h11 → others).
-          Large, matte-printed tags (A6/A5) at 1–2 m in good light work best.
+          Uses apriltag-wasm (single-thread) — no special headers required. If your selected family
+          isn’t compiled, the app will fall back to tag36h11, tag36h10, tag25h9, tag16h5, tagStandard41h12.
+          Use large matte-printed tags (A6/A5) at 1–2 m in good light.
         </div>
       </div>
     </div>
   </div>
 
-  <!-- No static script tags; we load libraries dynamically with robust waiting and fallbacks -->
+  <!-- AprilTag WASM (single-thread build) -->
+  <script defer src="https://unpkg.com/apriltag-wasm@0.1.6/dist/apriltag.min.js"></script>
 
   <script>
   (function(){
-    // ========= DOM =========
+    // ===== DOM =====
     const canvas = document.getElementById('view');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = canvas.getContext('2d', { willReadFrequently:true });
     const tbody = document.getElementById('tbody');
     const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
     const enableBtn = document.getElementById('enableBtn');
     const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const testBtn = document.getElementById('testBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+    const exportBtn= document.getElementById('exportBtn');
+    const testBtn  = document.getElementById('testBtn');
     const familySelect = document.getElementById('familySelect');
-    const familyNote = document.getElementById('familyNote');
-    const lapsSelect = document.getElementById('lapsSelect');
-    const debugVideo = document.getElementById('debugVideo');
-    const showVideoCb = document.getElementById('showVideo');
+    const familyNote   = document.getElementById('familyNote');
+    const lapsSelect   = document.getElementById('lapsSelect');
+    const debugVideo   = document.getElementById('debugVideo');
+    const showVideoCb  = document.getElementById('showVideo');
 
-    // ========= State =========
-    let stream = null, video = null;
-    let w = 1280, h = 720, guideY = Math.round(h*0.7);
-    let running = false, counting = false, startTime = 0, timerInterval = null;
-    let detector = null;            // active detector instance
-    let detectAdapter = null;       // function(frameImageData) -> [{id,cx,cy}]
-    const runners = {};             // id -> {laps, done, last, finish}
-    const COOLDOWN = 1500;          // ms between counts for same tag
-    let frameCount = 0;
+    // ===== State =====
+    let stream=null, video=null;
+    let w=1280, h=720, guideY=Math.round(h*0.7);
+    let running=false, counting=false, startTime=0, timerInt=null;
+    let detector=null;   // apriltag-wasm detector
+    let frameCount=0;
+    const COOLDOWN=1500; // ms per ID
+    const runners={};    // id -> {laps, done, last, finish}
 
-    // ========= Utils =========
-    function setStatus(...msg){ const t = msg.join(' '); statusEl.textContent = t; console.log(t); }
-    function msToMMSS(ms){ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
-    function logErr(prefix,e){ console.warn(prefix, e && e.message ? e.message : e); }
+    // ===== Utils =====
+    const setStatus=(...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };
+    const msToMMSS=(ms)=>{ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
 
     function ensureRow(id){
       if (runners[id]) return;
@@ -136,300 +135,220 @@
     }
     function updateRow(id){
       document.getElementById('laps-'+id).textContent = runners[id].laps;
-      document.getElementById('fin-'+id).textContent = runners[id].finish;
+      document.getElementById('fin-'+id).textContent  = runners[id].finish;
       if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
     }
     function countLap(id){
       if (!counting) return;
-      const now = Date.now();
-      const r = runners[id];
+      const now=Date.now(); const r=runners[id];
       if (r.done) return;
       if (now - r.last < COOLDOWN) return;
       r.laps++; r.last = now;
-      const req = parseInt(lapsSelect.value, 10);
-      if (r.laps >= req){
-        r.done = true;
-        r.finish = msToMMSS(now - startTime);
-      }
+      const req = parseInt(lapsSelect.value,10);
+      if (r.laps >= req){ r.done=true; r.finish = msToMMSS(now - startTime); }
       updateRow(id);
-      setStatus(`Tag ${id} lap ${r.laps}${r.done ? ' — finished' : ''}`);
+      setStatus(`Tag ${id} lap ${r.laps}${r.done?' — finished':''}`);
     }
 
-    // ========= Dynamic loader with fallbacks =========
-    function loadScript(src){
-      return new Promise((resolve,reject)=>{
-        const s = document.createElement('script');
-        s.src = src; s.async = true; s.crossOrigin = 'anonymous';
-        s.onload = ()=> resolve(true);
-        s.onerror = ()=> reject(new Error('failed '+src));
-        document.head.appendChild(s);
-      });
-    }
-
-    async function waitForApriltagJs(timeout=20000){
-      const start = Date.now();
+    // ===== Load apriltag-wasm & build detector =====
+    async function waitForWasm(timeout=20000){
+      const start=Date.now();
       while (Date.now()-start < timeout){
-        if (window.apriltag && typeof window.apriltag.Detector === 'function') return true;
+        if (window.createAprilTagDetector || window.AprilTag) return true;
         await new Promise(r=>setTimeout(r,150));
       }
       return false;
     }
 
-    async function initDetectorForFamily(family){
-      // Try apriltag-js first
-      if (!(window.apriltag && typeof window.apriltag.Detector === 'function')){
-        try {
-          setStatus('Loading apriltag-js (primary)...');
-          // jsDelivr primary
-          await loadScript('https://cdn.jsdelivr.net/npm/apriltag-js@0.1.4/dist/apriltag.min.js');
-          let ok = await waitForApriltagJs(20000);
-          if (!ok){
-            setStatus('Primary load waiting… trying unpkg fallback…');
-            await loadScript('https://unpkg.com/apriltag-js@0.1.4/dist/apriltag.min.js');
-            ok = await waitForApriltagJs(20000);
-            if (!ok) throw new Error('apriltag-js not available after both CDNs');
-          }
-          setStatus('apriltag-js ready.');
-        } catch (e){
-          logErr('apriltag-js load failed:', e);
-        }
+    async function initDetectorWithFallbacks(preferredFamily){
+      const ok = await waitForWasm(20000);
+      if (!ok) { setStatus('❌ apriltag-wasm not available (CDN blocked?).'); return false; }
+
+      let mod, DetectorClass;
+      try{
+        mod = window.createAprilTagDetector ? await window.createAprilTagDetector()
+            : await window.AprilTag(); // Module-like
+        DetectorClass = mod.AprilTagDetector || mod.default || mod;
+      }catch(e){
+        setStatus('❌ Failed to instantiate apriltag-wasm module:', e.message||e);
+        console.error(e);
+        return false;
       }
 
-      // If apriltag-js available, prefer it
-      if (window.apriltag && typeof window.apriltag.Detector === 'function'){
-        try{
-          const d = new window.apriltag.Detector({ families: [family] });
-          detector = d;
-          detectAdapter = (frame)=>{
-            const dets = detector.detect(frame) || [];
-            return dets.map(d=>{
-              const cs = d.corners || d.c || [];
-              let cx=0, cy=0; for(const c of cs){ cx+=c.x; cy+=c.y; }
-              const n = Math.max(1, cs.length); cx/=n; cy/=n;
-              return { id: (d.id ?? d.tag_id ?? -1), cx, cy };
-            });
-          };
-          setStatus(`Detector ready via apriltag-js (family: ${family}).`);
-          return true;
-        }catch(e){
-          logErr(`apriltag-js Detector creation failed for ${family}:`, e);
-          // Fall through to apriltag-wasm
-        }
-      }
-
-      // Try apriltag-wasm as a fallback
-      if (!(window.createAprilTagDetector || window.AprilTag)){
-        try{
-          setStatus('Loading apriltag-wasm fallback…');
-          await loadScript('https://unpkg.com/apriltag-wasm@0.1.6/dist/apriltag.min.js');
-        }catch(e){
-          logErr('apriltag-wasm load failed:', e);
-        }
-      }
-      if (window.createAprilTagDetector || window.AprilTag){
-        try{
-          const mod = window.createAprilTagDetector ? await window.createAprilTagDetector()
-                     : await window.AprilTag(); // returns Module-like
-          const TagDetector = mod.AprilTagDetector || mod.default || mod;
-          const d = new TagDetector();
-          if (d.addTagFamily) d.addTagFamily(family);
-          detector = d;
-          detectAdapter = (frame)=>{
-            // Convert RGBA ImageData -> grayscale Uint8
-            const { data, width, height } = frame;
-            const gray = new Uint8ClampedArray(width*height);
-            for(let i=0,j=0;i<data.length;i+=4,j++){
-              gray[j] = (data[i]*0.2126 + data[i+1]*0.7152 + data[i+2]*0.0722)|0;
-            }
-            const tags = detector.detect(gray, width, height) || [];
-            return tags.map(t=>{
-              const corners = t.corners || t.c || [];
-              let cx=0, cy=0; for(const c of corners){ cx+=c.x; cy+=c.y; }
-              const n = Math.max(1, corners.length); cx/=n; cy/=n;
-              return { id: (t.id ?? t.tagId ?? t.idNumber ?? -1), cx, cy };
-            });
-          };
-          setStatus(`Detector ready via apriltag-wasm (family: ${family}).`);
-          return true;
-        }catch(e){
-          logErr('apriltag-wasm detector init failed:', e);
-        }
-      }
-
-      return false;
-    }
-
-    async function initDetectorWithFallbacks(preferred){
-      const order = [preferred,'tag36h11','tag36h10','tag25h9','tag16h5','tagStandard41h12','tagStandard52h13'];
+      const order = [preferredFamily,'tag36h11','tag36h10','tag25h9','tag16h5','tagStandard41h12'];
       for (const fam of order){
-        const ok = await initDetectorForFamily(fam);
-        if (ok) { familyNote.textContent = 'Detector family: '+fam; return true; }
+        try{
+          const d = new DetectorClass();
+          if (d.addTagFamily) d.addTagFamily(fam);
+          detector = d;
+          familyNote.textContent = 'Detector family: '+fam;
+          setStatus(`✅ Detector ready (wasm, family: ${fam}).`);
+          return true;
+        }catch(e){
+          console.warn(`Detector init failed for ${fam}:`, e && e.message ? e.message : e);
+          detector = null;
+        }
       }
+      setStatus('❌ Detector init FAILED for all families.');
       return false;
     }
 
-    // ========= Camera =========
+    // ===== Camera =====
     async function enableCamera(){
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        setStatus('Browser does not support getUserMedia.');
-        return;
+        setStatus('Browser does not support getUserMedia.'); return;
       }
       setStatus('Requesting camera…');
       try{
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } },
-          audio: false
+          video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+          audio:false
         });
       }catch(e){
-        setStatus('Camera permission/error: '+(e.message||e));
-        enableBtn.disabled = false;
-        return;
+        setStatus('Camera error: '+(e.message||e)); enableBtn.disabled=false; return;
       }
-
-      // video element (off-DOM)
       video = document.createElement('video');
       video.srcObject = stream; video.playsInline = true; video.muted = true; video.autoplay = true;
       document.getElementById('debugVideo').srcObject = stream;
 
-      try { await video.play(); } catch(e){ /* iOS might delay */ }
+      try{ await video.play(); }catch(e){}
       await new Promise(r=>{
-        if (video.readyState >= 2) r();
+        if (video.readyState>=2) r();
         else video.onloadedmetadata = r;
       });
 
       w = video.videoWidth || w; h = video.videoHeight || h;
       canvas.width = w; canvas.height = h; guideY = Math.round(h*0.7);
 
-      // Load detector with robust fallbacks
-      const selected = familySelect.value;
-      setStatus(`Initialising detector for ${selected} (with fallbacks if needed)…`);
-      const ok = await initDetectorWithFallbacks(selected);
-      if (!ok){
-        setStatus('❌ Detector init FAILED. Check network and try again.');
-        enableBtn.disabled = false;
-        return;
-      }
+      // Init detector
+      setStatus('Initialising detector (WASM)…');
+      const ok = await initDetectorWithFallbacks(document.getElementById('familySelect').value);
+      if (!ok){ enableBtn.disabled=false; return; }
 
-      // UI states
-      enableBtn.disabled = true; startBtn.disabled = false; stopBtn.disabled = true;
-      exportBtn.disabled = true; testBtn.disabled = false;
-
-      // Start render loop (shows red line even before Start)
-      if (!running){ running = true; requestAnimationFrame(loop); }
-      setStatus('Camera & detector ready. Aim a tag at the red line, then press Start to count laps.');
+      // UI + start preview
+      enableBtn.disabled = true; startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=true; testBtn.disabled=false;
+      if (!running){ running=true; requestAnimationFrame(loop); }
+      setStatus('Camera & detector ready. Aim tag at the red line, then press Start.');
     }
 
-    // ========= Test detection once =========
-    async function testDetectorOnce(){
-      if (!detector) { setStatus('Detector not ready'); return; }
-      if (!video || video.readyState < 2){ setStatus('Video not ready'); return; }
+    // ===== Test detect once =====
+    async function testOnce(){
+      if (!detector){ setStatus('Detector not ready'); return; }
+      if (!video || video.readyState<2){ setStatus('Video not ready'); return; }
       ctx.drawImage(video,0,0,w,h);
       const frame = ctx.getImageData(0,0,w,h);
-      let dets = [];
-      try{ dets = detectAdapter ? detectAdapter(frame) : []; }catch(e){ logErr('test detect error:',e); }
-      if (dets.length){
-        setStatus(`Test: detected ${dets.length} tag(s). Example id: ${dets[0].id}`);
-      } else {
-        setStatus('Test: no tags in current frame. Try larger/closer tag in good light.');
+      try{
+        const gray = toGray(frame);
+        const tags = detector.detect(gray, w, h) || [];
+        if (tags.length){
+          setStatus(`Test: detected ${tags.length} tag(s). Example id: ${tags[0].id ?? tags[0].tagId ?? tags[0].idNumber}`);
+        } else {
+          setStatus('Test: no tags in frame. Try larger/closer tag, good light.');
+        }
+      }catch(e){
+        console.error(e); setStatus('Test detect failed: '+(e.message||e));
       }
     }
 
-    // ========= Loop =========
+    // RGBA -> grayscale Uint8ClampedArray (luma)
+    function toGray(imageData){
+      const { data, width, height } = imageData;
+      const gray = new Uint8ClampedArray(width*height);
+      for (let i=0,j=0;i<data.length;i+=4,j++){
+        gray[j] = (data[i]*0.2126 + data[i+1]*0.7152 + data[i+2]*0.0722)|0;
+      }
+      return gray;
+    }
+
+    // ===== Loop =====
     function loop(){
       if (!running) return;
-
       // draw video
-      if (video && video.readyState >= 2){
-        ctx.drawImage(video,0,0,w,h);
-      } else {
-        ctx.clearRect(0,0,w,h);
-      }
+      if (video && video.readyState>=2) ctx.drawImage(video,0,0,w,h);
+      else ctx.clearRect(0,0,w,h);
 
       // red guide
       ctx.strokeStyle='red'; ctx.lineWidth = Math.max(3, h/220);
       ctx.beginPath(); ctx.moveTo(0,guideY); ctx.lineTo(w,guideY); ctx.stroke();
 
-      // detection (throttled)
+      // detect every 2nd frame
       frameCount++;
-      if (detector && video && video.readyState >= 2 && (frameCount % 2 === 0)){
+      if (detector && video && video.readyState>=2 && (frameCount%2===0)){
         try{
           const frame = ctx.getImageData(0,0,w,h);
-          const dets = detectAdapter ? (detectAdapter(frame) || []) : [];
-          if (dets.length){
+          const gray = toGray(frame);
+          const tags = detector.detect(gray, w, h) || [];
+          if (tags.length){
             ctx.save();
-            ctx.strokeStyle = 'lime'; ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.lineWidth = Math.max(2, h/360);
-            for (const d of dets){
-              // center dot
-              ctx.beginPath(); ctx.arc(d.cx,d.cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
-              // quick box not available across libs without corners; we’re keeping center indicator fast
+            ctx.strokeStyle='lime'; ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.lineWidth=Math.max(2,h/360);
+            for (const t of tags){
+              const cs = t.corners || t.c || [];
+              let cx=0, cy=0;
+              for (const c of cs){ cx+=c.x; cy+=c.y; }
+              const n = Math.max(1, cs.length); cx/=n; cy/=n;
 
-              const id = d.id;
+              // center dot
+              ctx.beginPath(); ctx.arc(cx,cy, Math.max(4,h/200), 0, Math.PI*2); ctx.fill();
+
+              const id = (t.id ?? t.tagId ?? t.idNumber ?? -1);
               ensureRow(id);
-              if (counting && Math.abs(d.cy - guideY) < Math.max(16, h/60)){
-                countLap(id);
-              }
+              if (counting && Math.abs(cy - guideY) < Math.max(16,h/60)){ countLap(id); }
             }
             ctx.restore();
           }
-        }catch(e){ logErr('detect loop error:', e); }
+        }catch(e){ console.warn('detect loop error:', e); }
       }
 
       requestAnimationFrame(loop);
     }
 
-    // ========= Start/Stop/Export =========
+    // ===== Start/Stop/Export =====
     function startCounting(){
       if (!stream || !detector){ setStatus('Enable camera first.'); return; }
       if (counting) return;
       counting = true; startTime = Date.now();
-      timerEl.textContent = '00:00';
-      timerInterval = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);
-      startBtn.disabled = true; stopBtn.disabled = false; exportBtn.disabled = true;
+      timerEl.textContent='00:00';
+      timerInt = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);
+      startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
       setStatus('Counting started');
     }
     function stopCounting(){
       if (!counting) return;
-      counting = false; clearInterval(timerInterval); timerInterval = null;
-      for (const id of Object.keys(runners)){
-        const r = runners[id];
-        if (!r.done){ r.finish = 'DNF'; updateRow(id); }
-      }
-      startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = false;
+      counting=false; clearInterval(timerInt); timerInt=null;
+      for (const id of Object.keys(runners)){ const r=runners[id]; if (!r.done){ r.finish='DNF'; updateRow(id); } }
+      startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
       setStatus('Counting stopped — export available.');
     }
     function exportCSV(){
       const rows = [['Tag ID','Laps','Finish']];
-      for (const id of Object.keys(runners)){
-        const r = runners[id]; rows.push([id, String(r.laps), r.finish]);
-      }
-      const csv = rows.map(r=> r.map(c=>{
-        if (typeof c === 'string' && c.includes(',')) return `"${c.replace(/"/g,'""')}"`; return c;
-      }).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `laps_${new Date().toISOString()}.csv`;
+      for (const id of Object.keys(runners)){ const r=runners[id]; rows.push([id,String(r.laps),r.finish]); }
+      const csv = rows.map(r=> r.map(c=> typeof c==='string'&&c.includes(',')?`"${c.replace(/"/g,'""')}"`:c).join(',')).join('\n');
+      const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=`laps_${new Date().toISOString()}.csv`;
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      exportBtn.disabled = true; setStatus('CSV exported');
+      exportBtn.disabled=true; setStatus('CSV exported');
     }
 
     function stopCamera(){
       if (stream){ for (const t of stream.getTracks()) try{ t.stop(); }catch(e){} }
-      stream = null; video = null; running = false;
+      stream=null; video=null; running=false;
     }
     window.addEventListener('beforeunload', stopCamera);
 
-    // ========= UI wiring =========
-    showVideoCb.addEventListener('change', ()=>{ debugVideo.style.display = showVideoCb.checked ? 'block' : 'none'; });
-    enableBtn.addEventListener('click', async ()=>{
-      enableBtn.disabled = true;
-      try{ await enableCamera(); } catch(e){ setStatus('Enable failed: '+(e.message||e)); enableBtn.disabled=false; }
+    // ===== UI wiring =====
+    document.getElementById('showVideo').addEventListener('change', e=>{
+      document.getElementById('debugVideo').style.display = e.target.checked ? 'block' : 'none';
     });
-    testBtn.addEventListener('click', testDetectorOnce);
+    enableBtn.addEventListener('click', async ()=>{
+      enableBtn.disabled=true;
+      try{ await enableCamera(); }catch(e){ setStatus('Enable failed: '+(e.message||e)); enableBtn.disabled=false; }
+    });
+    testBtn.addEventListener('click', testOnce);
     startBtn.addEventListener('click', startCounting);
     stopBtn .addEventListener('click', stopCounting);
     exportBtn.addEventListener('click', exportCSV);
 
-    // init text
+    // init UI
     setStatus('Idle. Select family (default tag36h11) then click "Enable Camera".');
     familyNote.textContent = 'Selected family: ' + familySelect.value;
     familySelect.addEventListener('change', ()=>{ familyNote.textContent = 'Selected family: ' + familySelect.value; });
