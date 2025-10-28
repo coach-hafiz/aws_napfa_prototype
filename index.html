@@ -7,14 +7,14 @@
 <style>
   :root{ --accent:#036; --bg:#fafafa }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
-  header{ display:flex; gap:8px; padding:12px; align-items:center; background:#fff; border-bottom:1px solid #e6e6e6; position:sticky; top:0; z-index:10 }
+  header{ display:flex; gap:8px; padding:12px; align-items:center; background:#fff; border-bottom:1px solid #e6e6e6; position:sticky; top:0; z-index:10; flex-wrap:wrap }
   button{ background:var(--accent); color:#fff; border:0; padding:10px 12px; border-radius:10px; font-weight:700 }
   button.secondary{ background:#666 }
   select,input[type=number]{ padding:8px; border-radius:8px; border:1px solid #ddd }
   .timer{ font-weight:700; min-width:72px; text-align:center }
   .container{ max-width:1100px; margin:12px auto; padding:0 12px }
-  .video-wrap{ background:#000; border-radius:10px; overflow:hidden }
-  canvas#view{ display:block; width:100%; height:auto; touch-action:none }
+  .video-wrap{ background:#000; border-radius:10px; overflow:hidden; position:relative }
+  canvas#view{ display:block; width:100%; height:auto; touch-action:none; background:#000 }
   .panel{ margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start }
   .tbl{ flex:1; min-width:300px; background:#fff; border-radius:10px; border:1px solid #eee; max-height:44vh; overflow:auto }
   table{ width:100%; border-collapse:collapse }
@@ -23,21 +23,37 @@
   tr.done{ background:#e9f6ec }
   .log{ white-space:pre-wrap; font-size:13px; color:#333; margin-top:8px }
   .muted{ color:#666; font-size:13px }
-  @media (max-width:640px){ header{ flex-wrap:wrap } }
+  .debugVideo{ position:absolute; right:8px; top:8px; width:160px; height:auto; border:2px solid rgba(255,255,255,0.9); border-radius:6px; display:none; z-index:20 }
+  .controls { display:flex; gap:8px; align-items:center; }
+  @media (max-width:640px){ header{ flex-direction:column; align-items:flex-start } }
 </style>
 </head>
 <body>
   <header>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button id="startBtn">Start</button>
+    <div class="controls">
+      <button id="enableBtn">Enable Camera</button>
+      <button id="startBtn" class="secondary" disabled>Start</button>
       <button id="stopBtn" class="secondary" disabled>Stop</button>
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-left:6px"><input id="showVideo" type="checkbox"/> Show video</label>
     </div>
 
     <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
       <label class="muted">Laps</label>
-      <select id="lapsSelect">
-        <!-- options will be inserted by script -->
+      <select id="lapsSelect" aria-label="Number of laps">
+        <!-- static options to avoid JS-populate failure -->
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
       </select>
 
       <div class="timer" id="timer">00:00</div>
@@ -45,23 +61,25 @@
   </header>
 
   <div class="container">
-    <div class="video-wrap">
-      <canvas id="view"></canvas>
+    <div class="video-wrap" id="videoWrap">
+      <canvas id="view" aria-label="Camera view with overlay"></canvas>
+      <!-- a small video element for debugging (hidden by default). Toggled by "Show video" checkbox -->
+      <video id="debugVideo" class="debugVideo" playsinline muted></video>
     </div>
 
     <div class="panel">
-      <div class="tbl">
+      <div class="tbl" aria-live="polite">
         <table>
           <thead><tr><th>Tag ID</th><th>Laps</th><th>Finish</th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
 
-      <div style="width:260px">
+      <div style="width:280px">
         <div class="muted">Status</div>
-        <div id="status" class="log">Idle. Click Start to allow camera and begin.</div>
+        <div id="status" class="log">Idle. Click "Enable Camera" to allow camera access.</div>
         <div style="margin-top:12px;" class="muted">Notes</div>
-        <div class="log muted">Point your camera to the track, place the red line at the crossing height (calibrate by resizing device or page). The app detects AprilTag IDs and counts a lap when a tag crosses the red line.</div>
+        <div class="log muted">Place camera so the crossing happens near the red line. Click "Start" to begin counting after camera is enabled. When you press "Stop" results are exported via CSV.</div>
       </div>
     </div>
   </div>
@@ -70,27 +88,332 @@
   <script defer src="https://unpkg.com/apriltag-js@0.1.4/dist/apriltag.min.js"></script>
 
   <script>
-  // Simple, self-contained AprilTag lap counter
-  // Features:
-  // - camera capture + apriltag-js detections
-  // - red guide line (start/finish)
-  // - laps dropdown
-  // - Start / Stop
-  // - Export CSV after Stop
-  // - Auto-DNF on Stop for incomplete runners
-  // - Table: Tag ID, laps completed, finish time
+  (function(){
+    // Robust single-file lap counter with explicit enable flow and static laps dropdown.
+    // Fixes for: black screen, missing dropdown (static in HTML), clearer status & debug video.
 
-  // --- DOM ---
-  const canvas = document.getElementById('view');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const tbody = document.getElementById('tbody');
-  const statusEl = document.getElementById('status');
-  const timerEl = document.getElementById('timer');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const exportBtn = document.getElementById('exportBtn');
-  const lapsSelect = document.getElementById('lapsSelect');
+    // DOM
+    const canvas = document.getElementById('view');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const tbody = document.getElementById('tbody');
+    const statusEl = document.getElementById('status');
+    const timerEl = document.getElementById('timer');
+    const enableBtn = document.getElementById('enableBtn');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const lapsSelect = document.getElementById('lapsSelect');
+    const debugVideo = document.getElementById('debugVideo');
+    const showVideoCb = document.getElementById('showVideo');
 
-  // --- state ---
-  let stream = null, video = null;
-  let w = 1280,
+    // State
+    let stream = null, video = null;
+    let w = 1280, h = 720, guideY = Math.round(h*0.7);
+    let running = false, counting = false, startTime = 0, timerInterval = null;
+    let detector = null;
+    const runners = {}; // id -> {laps, done, last, finish}
+    const COOLDOWN = 1500; // ms between counts for same tag
+    const DETECT_EVERY = 2;
+    let frameCount = 0;
+
+    // helpers
+    function setStatus(...parts){ statusEl.textContent = parts.join(' '); console.log(...parts); }
+    function msToMMSS(ms){
+      const s = Math.floor(ms/1000);
+      return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    }
+
+    function ensureRow(id){
+      if (runners[id]) return;
+      runners[id] = { laps:0, done:false, last:0, finish:'-' };
+      const tr = document.createElement('tr'); tr.id = 'r-'+id;
+      tr.innerHTML = `<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
+      tbody.appendChild(tr);
+    }
+    function updateRow(id){
+      document.getElementById('laps-'+id).textContent = runners[id].laps;
+      document.getElementById('fin-'+id).textContent = runners[id].finish;
+      if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
+    }
+
+    function countLap(id){
+      if (!counting) return;
+      const now = Date.now();
+      const r = runners[id];
+      if (r.done) return;
+      if (now - r.last < COOLDOWN) return; // cooldown
+      r.laps++;
+      r.last = now;
+      const req = parseInt(lapsSelect.value, 10);
+      if (r.laps >= req){
+        r.done = true;
+        r.finish = msToMMSS(now - startTime);
+      }
+      updateRow(id);
+      setStatus(`Tag ${id} lap ${r.laps}${r.done ? ' — finished' : ''}`);
+    }
+
+    function allFinished(){
+      const ks = Object.keys(runners);
+      if (ks.length === 0) return false;
+      return ks.every(k => runners[k].done);
+    }
+
+    // camera + detector init (explicit user gesture required)
+    async function enableCamera(){
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        setStatus('Browser does not support getUserMedia.');
+        return;
+      }
+      setStatus('Requesting camera...');
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+      }catch(e){
+        setStatus('Camera permission error:', e.message || e);
+        console.error(e);
+        return;
+      }
+
+      // create hidden video for feeding canvas. Keep a reference to avoid GC.
+      video = document.createElement('video');
+      video.srcObject = stream;
+      video.playsInline = true;
+      video.muted = true;
+      video.autoplay = true;
+
+      // also connect to debugVideo element so user can toggle visible video
+      debugVideo.srcObject = stream;
+
+      try{
+        await video.play();
+      }catch(e){
+        // some browsers require interaction; but this function is triggered by button so should be fine.
+        console.warn('video.play() rejected:', e);
+      }
+
+      // wait for dimensions
+      await new Promise(r => {
+        if (video.readyState >= 2) return r();
+        const t = setTimeout(r, 1000);
+        video.onloadedmetadata = ()=>{ clearTimeout(t); r(); };
+      });
+
+      w = video.videoWidth || w;
+      h = video.videoHeight || h;
+      canvas.width = w; canvas.height = h;
+      guideY = Math.round(h*0.7);
+
+      // wait for apriltag-js to be available (WASM may init slightly after script load)
+      const ok = await waitForAprilTag(5000);
+      if (!ok){
+        setStatus('AprilTag library failed to load. Check network.');
+        console.error('apriltag not available on window');
+      } else {
+        try {
+          detector = new window.apriltag.Detector({ families: ['tag36h11'] });
+        } catch (e){
+          console.error('Error creating detector:', e);
+          setStatus('Failed to create AprilTag detector:', e.message || e);
+          detector = null;
+        }
+      }
+
+      setStatus('Camera enabled — ready. Click Start to begin counting.');
+      enableBtn.disabled = true;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      exportBtn.disabled = true;
+
+      // start render loop (even before counting) so user sees red line and preview
+      if (!running){
+        running = true;
+        requestAnimationFrame(loop);
+      }
+    }
+
+    function waitForAprilTag(timeout=5000){
+      return new Promise(resolve=>{
+        if (window.apriltag && typeof window.apriltag.Detector === 'function') return resolve(true);
+        const start = Date.now();
+        const iv = setInterval(()=>{
+          if (window.apriltag && typeof window.apriltag.Detector === 'function'){ clearInterval(iv); resolve(true); }
+          else if (Date.now() - start > timeout){ clearInterval(iv); resolve(false); }
+        }, 150);
+      });
+    }
+
+    // main draw + detect loop
+    function loop(){
+      if (!running) return;
+      // draw (if video present)
+      if (video && video.readyState >= 2){
+        try {
+          ctx.drawImage(video, 0, 0, w, h);
+        } catch (e) {
+          // drawImage can fail if video dimensions are 0 or if capture is stopped
+          // clear canvas and continue
+          ctx.clearRect(0,0,canvas.width, canvas.height);
+        }
+      } else {
+        ctx.clearRect(0,0,canvas.width, canvas.height);
+      }
+
+      // draw guide line
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = Math.max(3, h/220);
+      ctx.beginPath(); ctx.moveTo(0, guideY); ctx.lineTo(w, guideY); ctx.stroke();
+
+      // detection throttle
+      frameCount++;
+      if (detector && (frameCount % DETECT_EVERY === 0) && video && video.readyState >= 2){
+        try{
+          const frame = ctx.getImageData(0,0,w,h);
+          const dets = detector.detect(frame) || [];
+          if (dets.length){
+            ctx.save();
+            ctx.strokeStyle = 'lime';
+            ctx.fillStyle = 'rgba(0,255,0,0.25)';
+            ctx.lineWidth = Math.max(2, h/360);
+            for (const d of dets){
+              const cs = d.corners || d.c || [];
+              let cx = 0, cy = 0;
+              for (const c of cs){ cx += c.x; cy += c.y; }
+              const n = Math.max(1, cs.length);
+              cx /= n; cy /= n;
+
+              // mark center and box
+              ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
+              if (cs.length === 4){
+                ctx.beginPath(); ctx.moveTo(cs[0].x, cs[0].y);
+                for (let i=1;i<4;i++) ctx.lineTo(cs[i].x, cs[i].y);
+                ctx.closePath(); ctx.stroke();
+              }
+
+              const id = (d.id ?? d.tag_id ?? -1);
+              ensureRow(id);
+              if (counting && Math.abs(cy - guideY) < Math.max(16, h/60)){
+                countLap(id);
+              }
+            }
+            ctx.restore();
+          }
+        }catch(e){
+          console.error('detect/draw error:', e);
+        }
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // Start / Stop handlers
+    function startCounting(){
+      if (!stream){
+        setStatus('Camera not enabled. Click "Enable Camera" first.');
+        return;
+      }
+      if (!detector){
+        setStatus('Detector not ready yet. Wait a moment and try again.');
+        return;
+      }
+      if (counting) return;
+      counting = true;
+      startTime = Date.now();
+      timerEl.textContent = '00:00';
+      timerInterval = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now() - startTime); }, 1000);
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      exportBtn.disabled = true;
+      setStatus('Counting started');
+    }
+
+    function stopCounting(){
+      if (!counting) return;
+      counting = false;
+      clearInterval(timerInterval); timerInterval = null;
+      // mark DNF for any incomplete runners
+      const req = parseInt(lapsSelect.value, 10);
+      for (const id of Object.keys(runners)){
+        const r = runners[id];
+        if (!r.done){
+          r.finish = 'DNF';
+          updateRow(id);
+        }
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      exportBtn.disabled = false;
+      setStatus('Stopped — results ready for export (or continue by pressing Start)');
+    }
+
+    function exportCSV(){
+      const rows = [['Tag ID','Laps','Finish']];
+      for (const id of Object.keys(runners)){
+        const r = runners[id];
+        rows.push([id, String(r.laps), r.finish]);
+      }
+      const csv = rows.map(r=> r.map(c=>{
+        if (typeof c === 'string' && c.includes(',')) return `"${c.replace(/"/g,'""')}"`;
+        return c;
+      }).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `laps_${new Date().toISOString()}.csv`; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setStatus('CSV exported');
+      exportBtn.disabled = true;
+    }
+
+    // cleanup camera
+    function stopCamera(){
+      if (stream){
+        for (const t of stream.getTracks()){
+          try{ t.stop(); }catch(e){}
+        }
+      }
+      stream = null;
+      video = null;
+      running = false;
+    }
+    window.addEventListener('beforeunload', stopCamera);
+
+    // debug video toggle
+    showVideoCb.addEventListener('change', ()=>{
+      debugVideo.style.display = showVideoCb.checked ? 'block' : 'none';
+    });
+
+    // safe enable: disable multiple clicks
+    enableBtn.addEventListener('click', async ()=>{
+      enableBtn.disabled = true;
+      try {
+        await enableCamera();
+      } catch(e){
+        console.error('enableCamera error:', e);
+        setStatus('Enable camera failed:', e.message || e);
+        enableBtn.disabled = false;
+      }
+    });
+
+    startBtn.addEventListener('click', startCounting);
+    stopBtn.addEventListener('click', stopCounting);
+    exportBtn.addEventListener('click', exportCSV);
+
+    // initial UI state
+    setStatus('Idle. Click "Enable Camera" to allow camera access.');
+    // in case apriltag fails to load, display a helpful hint
+    setTimeout(()=>{
+      if (!window.apriltag) console.warn('apriltag-js not detected — check network/console for errors');
+    }, 1200);
+
+    // Expose some helpers for debugging in console
+    window._lapApp = {
+      runners, stopCamera,
+      _dbg: ()=>({ streamExists: !!stream, detectorReady: !!detector, running, counting })
+    };
+
+  })();
+  </script>
+</body>
+</html>
