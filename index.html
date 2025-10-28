@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>AprilTag Lap Counter — Fixed Video Draw</title>
+<title>AprilTag Lap Counter — Robust Apriltag Loader</title>
 <style>
   :root{ --accent:#0077a9; --bg:#f7f9fb }
   *{ box-sizing:border-box }
@@ -14,7 +14,6 @@
   select,input[type=number]{ height:40px; padding:0 8px; border-radius:10px; border:1px solid #d7e3ea; background:#fff }
   .timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:80px; text-align:center; }
   .wrap{ background:#000; display:flex; justify-content:center; align-items:center }
-  /* important: keep canvas CSS width responsive but use attributes for actual pixels */
   canvas#view{ display:block; width:100%; height:auto; touch-action:none; background:#000 }
   .panel{ padding:12px }
   .tbl{ max-height:44vh; overflow:auto; background:#fff; border:1px solid #e6eef6; border-radius:10px }
@@ -26,7 +25,10 @@
   .muted{ color:#666; font-size:13px }
   .status{ padding:6px 10px; border-radius:999px; background:#eaf2f8; color:#034c66; font-weight:700 }
   .small{ font-size:13px; color:#334 }
-  .overlay-debug{ position:absolute; left:8px; top:8px; padding:6px 10px; background:rgba(0,0,0,0.5); color:#fff; border-radius:8px; font-size:12px; z-index:30 }
+  .overlay-debug{ position:absolute; left:8px; top:8px; padding:6px 10px; background:rgba(0,0,0,0.6); color:#fff; border-radius:8px; font-size:12px; z-index:30 }
+  .lib-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .lib-actions button{ background:#4b5563 }
+  .hint{ font-size:13px; color:#334; margin-left:8px }
 </style>
 </head>
 <body>
@@ -50,12 +52,18 @@
     <label class="small">Cooldown (ms): <input id="cooldown" type="number" value="2000" min="100" style="width:110px"></label>
     <label class="small">Detect every N frames: <input id="detectEvery" type="number" value="2" min="1" style="width:70px"></label>
     <label class="small" title="Tolerance in pixels from guide line">Line tolerance (px): <input id="tol" type="number" value="24" min="4" style="width:70px"></label>
+
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <div class="lib-actions">
+        <button id="libRetryBtn" class="secondary">Retry Apriltag Load</button>
+        <button id="libShowNet" class="secondary">Open Network Tab</button>
+      </div>
+      <div class="hint" id="libHint">Library status: <strong id="libStatus">loading...</strong></div>
+    </div>
   </div>
 
   <div class="wrap" style="position:relative">
-    <!-- Canvas shows the camera frames and overlays -->
     <canvas id="view"></canvas>
-    <!-- small overlay for debug info (hidden by default, shown when necessary) -->
     <div id="dbg" class="overlay-debug" style="display:none">debug</div>
   </div>
 
@@ -75,13 +83,10 @@
     <div class="log" id="log">Logs will appear here.</div>
   </div>
 
-  <!-- AprilTag JS (WASM) -->
-  <script defer src="https://unpkg.com/apriltag-js@0.1.4/dist/apriltag.min.js"></script>
+  <!-- We do NOT include apriltag script here directly. We dynamically load it with retries and fallbacks. -->
 
   <script>
   // ---------- DOM ----------
-  const canvas = document.getElementById('view');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const enableBtn = document.getElementById('enableBtn');
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
@@ -95,6 +100,13 @@
   const detectEveryInput = document.getElementById('detectEvery');
   const tolInput = document.getElementById('tol');
   const dbg = document.getElementById('dbg');
+  const libStatusEl = document.getElementById('libStatus');
+  const libRetryBtn = document.getElementById('libRetryBtn');
+  const libShowNet = document.getElementById('libShowNet');
+
+  // Canvas and ctx (create here so we can set DPR later)
+  const canvas = document.getElementById('view');
+  let ctx = null;
 
   // ---------- State ----------
   let stream = null, video = null;
@@ -127,7 +139,6 @@
     tr.innerHTML = `<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
     tbody.appendChild(tr);
   }
-
   function updateRow(id){
     document.getElementById(`laps-${id}`).textContent = runners[id].laps;
     document.getElementById(`fin-${id}`).textContent = runners[id].finishStr;
@@ -156,81 +167,173 @@
     log(`Tag ${id} lap ${r.laps}${r.done ? ' (finished @'+r.finishStr+')' : ''}`);
   }
 
-  // ---------- Apriltag loader ----------
-  async function waitForApriltag(timeoutMs = 5000){
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs){
-      if (window.apriltag && typeof window.apriltag.Detector === 'function') return true;
-      await new Promise(r => setTimeout(r, 120));
+  // ---------- Apriltag loader with fallbacks ----------
+  // Multiple CDN URLs to try sequentially
+  const APRILTAG_VERSION = '0.1.4';
+  const CDN_URLS = [
+    `https://unpkg.com/apriltag-js@${APRILTAG_VERSION}/dist/apriltag.min.js`,
+    `https://cdn.jsdelivr.net/npm/apriltag-js@${APRILTAG_VERSION}/dist/apriltag.min.js`,
+    // keep additional fallback (raw.githack can be used if other CDNs blocked)
+    `https://rawcdn.githack.com/chenzhenlai/apriltag-js/v${APRILTAG_VERSION}/dist/apriltag.min.js`
+  ];
+
+  // load a script tag and return a promise that resolves when it loads or rejects on error/timeout
+  function loadScript(url, timeout = 8000){
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = true;
+      // crossOrigin helps with WASM fetches from CDN
+      s.crossOrigin = 'anonymous';
+      let settled = false;
+      s.onload = () => { if (!settled){ settled = true; resolve(); } };
+      s.onerror = (e) => { if (!settled){ settled = true; reject(new Error('Failed to load ' + url)); } };
+      document.head.appendChild(s);
+      setTimeout(() => {
+        if (!settled){
+          settled = true;
+          reject(new Error('Timeout loading ' + url));
+        }
+      }, timeout);
+    });
+  }
+
+  // Try each CDN until apriltag is available
+  async function tryLoadApriltag(){
+    libStatusEl.textContent = 'loading...';
+    dbg.style.display = 'none';
+    // If already available, return success
+    if (window.apriltag && typeof window.apriltag.Detector === 'function'){
+      libStatusEl.textContent = 'loaded';
+      return true;
     }
+    for (const url of CDN_URLS){
+      try {
+        log('Attempting to load apriltag from', url);
+        await loadScript(url, 9000);
+        // after script load, wait a bit for WASM to fetch & instantiate
+        const ok = await waitForApriltag(6000);
+        if (ok){
+          libStatusEl.textContent = 'loaded';
+          log('apriltag loaded from', url);
+          return true;
+        } else {
+          log('Script loaded but apriltag.Detector not available after wait for', url);
+        }
+      } catch (e){
+        log('Load failed for', url, e.message || e);
+      }
+    }
+    libStatusEl.textContent = 'failed';
+    dbg.style.display = '';
+    dbg.textContent = 'AprilTag library failed to load. Check Network tab or press Retry.';
     return false;
   }
 
-  // ---------- Camera (fix applied) ----------
+  // Wait for window.apriltag.Detector to appear with timeout
+  function waitForApriltag(timeoutMs = 5000){
+    return new Promise((resolve) => {
+      const start = Date.now();
+      (function poll(){
+        if (window.apriltag && typeof window.apriltag.Detector === 'function') return resolve(true);
+        if (Date.now() - start > timeoutMs) return resolve(false);
+        setTimeout(poll, 120);
+      })();
+    });
+  }
+
+  // Kick off initial load attempt
+  tryLoadApriltag();
+
+  libRetryBtn.addEventListener('click', async () => {
+    libStatusEl.textContent = 'retrying...';
+    dbg.style.display = 'none';
+    await tryLoadApriltag();
+  });
+
+  libShowNet.addEventListener('click', () => {
+    // helper: instruct user to open devtools - can't open automatically
+    alert('Open your browser DevTools → Network tab. Reload the page and watch the requests for apriltag files (apriltag.min.js and apriltag*.wasm). Look for network errors or CORS failures.');
+  });
+
+  // ---------- Camera + detector usage (fixed drawImage behavior) ----------
+  // Setup canvas context later after DPR transform
+  function createCanvasContextForVideo(videoWidth, videoHeight){
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+    canvas.width = Math.max(320, Math.round(videoWidth * dpr));
+    canvas.height = Math.max(180, Math.round(videoHeight * dpr));
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
+    // scale drawings so 1 canvas unit = 1 CSS pixel
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
   async function enableCamera(){
     try {
+      // Ensure apriltag is loaded (attempt to load if not yet)
+      if (!(window.apriltag && typeof window.apriltag.Detector === 'function')){
+        const ok = await tryLoadApriltag();
+        if (!ok){
+          alert('AprilTag library failed to load. Check network/console and press Retry in the UI.');
+          return;
+        }
+      }
+
       // Request camera
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal:1280 }, height:{ ideal:720 } },
         audio: false
       });
 
-      // Create video element but DO NOT use display:none.
-      // Many browsers will not update video frames if the element is display:none.
-      // Keep it in the DOM but off-screen / tiny and nearly transparent so it can play and draw.
+      // Create video element but keep it renderable (not display:none)
       video = document.createElement('video');
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
       video.srcObject = stream;
-      // Off-screen but renderable: position it far left and keep size 1x1.
+      // Keep it offscreen but renderable (some browsers don't update video when fully hidden)
       video.style.position = 'absolute';
       video.style.left = '-10000px';
       video.style.top = '0';
       video.style.width = '1px';
       video.style.height = '1px';
-      video.style.opacity = '0.001'; // tiny opacity but not 0
+      video.style.opacity = '0.001';
       document.body.appendChild(video);
 
-      // Wait for playback to start
       await video.play();
       await new Promise(r => {
         if (video.readyState >= 2) return r();
         video.onloadedmetadata = r;
       });
 
-      // Set canvas pixel size to video actual resolution (use DPR for crispness)
-      const dpr = window.devicePixelRatio || 1;
-      w = video.videoWidth || 1280;
-      h = video.videoHeight || 720;
-      canvas.width = Math.max(320, Math.round(w * dpr));
-      canvas.height = Math.max(180, Math.round(h * dpr));
-      // Keep the CSS width responsive so it fits the screen
-      canvas.style.width = '100%';
-      canvas.style.height = 'auto';
-      // Scale drawing to DPR
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
+      // Setup canvas size and ctx
+      const realW = video.videoWidth || 1280;
+      const realH = video.videoHeight || 720;
+      createCanvasContextForVideo(realW, realH);
+      w = realW; h = realH;
       guideY = Math.round(h * 0.7);
 
-      setStatus('Loading detector...');
-      const ok = await waitForApriltag(6000);
-      if (!ok){
-        alert('AprilTag library failed to load. Check network or CDN.');
-        setStatus('Detector failed');
-        return;
+      // instantiate detector if not yet
+      if (!detector){
+        try {
+          detector = new window.apriltag.Detector({ families: ['tag36h11'] });
+        } catch (e){
+          console.error('Detector instantiation failed', e);
+          alert('Failed to initialize AprilTag detector: ' + (e && e.message ? e.message : e));
+          return;
+        }
       }
-      detector = new window.apriltag.Detector({ families: ['tag36h11'] });
+
       setStatus('Ready');
       enableBtn.disabled = true;
       startBtn.disabled = false;
       stopBtn.disabled = false;
       running = true;
-      frameCount = 0;
-      framesDrawn = 0;
+      frameCount = 0; framesDrawn = 0;
       requestAnimationFrame(loop);
-      log('Camera enabled', `${w}x${h}`, 'DPR=' + dpr);
-    } catch (e) {
+      log('Camera enabled', `${w}x${h}`);
+    } catch (e){
       console.error('Camera error', e);
       alert('Camera error: ' + (e && e.message ? e.message : e));
       setStatus('Camera error');
@@ -257,25 +360,22 @@
   function loop(){
     if (!running) return;
 
-    // Draw the current frame. Only draw if video is playing/ready.
+    // Draw frame if available
     if (video && video.readyState >= 2){
       try {
-        // drawImage expects coordinates in canvas CSS pixels scaled by transform set earlier
         ctx.drawImage(video, 0, 0, w, h);
         framesDrawn++;
-      } catch (e) {
-        // guard: if drawImage fails, show debug and skip detection
-        console.error('drawImage failed', e);
+      } catch (e){
+        console.error('drawImage error', e);
         dbg.style.display = '';
         dbg.textContent = 'drawImage error: ' + (e && e.message ? e.message : e);
       }
     } else {
-      // clear canvas to black while not ready
       ctx.fillStyle = '#000';
       ctx.fillRect(0,0,w,h);
     }
 
-    // draw guide line (use non-scaled stroke width for visibility)
+    // guide line
     ctx.save();
     ctx.strokeStyle = 'red';
     ctx.lineWidth = Math.max(3, (h/240));
@@ -285,12 +385,11 @@
     ctx.stroke();
     ctx.restore();
 
-    // Detection (throttled)
+    // detect
     frameCount++;
     if (detector && (frameCount % getDetectEvery() === 0) && video && video.readyState >= 2){
       let frame = null;
       try {
-        // getImageData uses the canvas internal pixel buffer; it's OK because video is same origin (getUserMedia)
         frame = ctx.getImageData(0, 0, w, h);
       } catch (e){
         console.error('getImageData error', e);
@@ -302,7 +401,6 @@
         } catch (e){
           console.warn('Detector error', e);
         }
-
         if (dets.length){
           ctx.save();
           ctx.strokeStyle = 'lime';
@@ -336,10 +434,10 @@
       }
     }
 
-    // If frames are not drawing at all, show a helpful debug message after a few frames
+    // debug hint if no frames drawn
     if (frameCount > 10 && framesDrawn === 0){
       dbg.style.display = '';
-      dbg.textContent = 'No frames drawn — video may be paused or blocked. Ensure permission and that the video element is not display:none.';
+      dbg.textContent = 'No frames drawn — video may be paused/blocked or the video element is hidden (avoid display:none).';
     } else if (framesDrawn > 0){
       dbg.style.display = 'none';
     }
@@ -428,7 +526,8 @@
 
   // initial UI
   setStatus('Idle');
-  log('Ready — click "Enable Camera". If the canvas stays black, check the small debug badge on the video area for hints.');
+  libStatusEl.textContent = 'loading...';
+  log('Ready — attempt to load AprilTag library automatically. If it fails, use "Retry Apriltag Load" and open DevTools Network tab.');
 
   </script>
 </body>
