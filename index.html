@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>ArUco Lap Counter</title>
+<title>ArUco (js-aruco) Lap Counter — No OpenCV</title>
 <style>
   :root{ --accent:#0b74a6; --bg:#f6fbff }
   *{ box-sizing:border-box }
@@ -26,8 +26,7 @@
   .status{ padding:6px 10px; border-radius:999px; background:#eaf2f8; color:#034c66; font-weight:700 }
   .small{ font-size:13px; color:#334 }
   .overlay-debug{ position:absolute; left:8px; top:8px; padding:6px 10px; background:rgba(0,0,0,0.6); color:#fff; border-radius:8px; font-size:12px; z-index:30 }
-  .lib-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
-  .lib-actions button{ background:#4b5563 }
+  .hint{ font-size:13px; color:#334; margin-left:8px }
 </style>
 </head>
 <body>
@@ -55,10 +54,8 @@
     <label class="small">Line tolerance (px): <input id="tol" type="number" value="24" min="4" style="width:70px"></label>
 
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-      <div class="lib-actions">
-        <button id="libRetryBtn" class="secondary">Retry OpenCV Load</button>
-      </div>
-      <div class="small" style="margin-left:6px">Library: <strong id="libStatus">loading...</strong></div>
+      <div class="hint">Detector: <strong id="libStatus">loading...</strong></div>
+      <button id="libRetry" class="secondary">Retry Load</button>
     </div>
   </div>
 
@@ -83,20 +80,27 @@
     <div class="log" id="log">Logs will appear here.</div>
   </div>
 
-  <!-- We'll dynamically load OpenCV.js (ArUco via opencv_contrib) with retries -->
   <script>
-  // Config: CDN list to try for opencv.js (these are common public CDNs; adjust if you host locally)
-  const OPENCV_CDNS = [
-    // official doc distro (often available)
-    'https://docs.opencv.org/4.x/opencv.js',
-    // jsDelivr CDN (may not always host)
-    'https://cdn.jsdelivr.net/npm/opencv.js@4.7.0/opencv.js',
+  /*
+    Notes:
+    - This implementation uses js-aruco (pure JS) to detect ArUco markers so there is no OpenCV/WASM dependency.
+    - It attempts to load js-aruco from multiple sources; if your hosting/Network blocks CDNs you can vendor aruco.min.js into your Vercel project (public/) and change the URL below to a local path.
+    - The detector API used: new AR.Detector(); markers = detector.detect(imageData).
+  */
+
+  // CDN candidates for js-aruco (pure JS library)
+  const ARUCO_URLS = [
+    // rawcdn.githack serves files from GitHub reliably in many environments
+    'https://rawcdn.githack.com/jcmellado/js-aruco/master/build/aruco.min.js',
     // unpkg fallback
-    'https://unpkg.com/opencv.js@4.7.0/opencv.js'
+    'https://unpkg.com/js-aruco@1.3.0/build/aruco.min.js',
+    // jsDelivr fallback
+    'https://cdn.jsdelivr.net/gh/jcmellado/js-aruco@master/build/aruco.min.js'
   ];
 
-  // ---------- DOM ----------
+  // DOM
   const canvas = document.getElementById('view');
+  let ctx = null;
   const dbg = document.getElementById('dbg');
   const enableBtn = document.getElementById('enableBtn');
   const startBtn = document.getElementById('startBtn');
@@ -107,30 +111,22 @@
   const statusEl = document.getElementById('status');
   const tbody = document.getElementById('tbody');
   const logEl = document.getElementById('log');
-  const libStatusEl = document.getElementById('libStatus');
-  const libRetryBtn = document.getElementById('libRetryBtn');
   const cooldownInput = document.getElementById('cooldown');
   const detectEveryInput = document.getElementById('detectEvery');
   const tolInput = document.getElementById('tol');
+  const libStatusEl = document.getElementById('libStatus');
+  const libRetryBtn = document.getElementById('libRetry');
 
-  let ctx = null;
-
-  // ---------- State ----------
-  let stream = null, video = null;
+  // State
+  let video = null, stream = null;
   let w = 1280, h = 720, guideY = 0;
   let running = false, counting = false, startTime = 0, timerTick = null;
-  let frameCount = 0, framesDrawn = 0;
   const runners = {}; // id -> { laps, last, finishMs, finishStr, done }
   const DEFAULT_COOLDOWN = 2000;
+  let frameCount = 0, framesDrawn = 0;
+  let detector = null; // AR.Detector instance
 
-  // OpenCV related
-  let cvReady = false;
-  let arucoDetector = null; // either ArucoDetector or fallback data
-  let arucoDictionary = null;
-  let arucoParams = null;
-
-  // Utility log
-  const log = (...a) => { console.log(...a); logEl.textContent = (logEl.textContent + '\n' + a.join(' ')).slice(-6000); };
+  const log = (...a) => { console.log(...a); logEl.textContent = (logEl.textContent + '\n' + a.join(' ')).slice(-8000); };
 
   function setStatus(s){ statusEl.textContent = s; }
 
@@ -161,6 +157,7 @@
   function getCooldown(){ return Math.max(50, parseInt(cooldownInput.value || DEFAULT_COOLDOWN, 10)); }
   function getDetectEvery(){ return Math.max(1, parseInt(detectEveryInput.value || '2', 10)); }
   function getTol(){ return Math.max(4, parseInt(tolInput.value || '24', 10)); }
+
   function countLap(id){
     if (!counting) return;
     const now = Date.now();
@@ -178,8 +175,8 @@
     log(`Tag ${id} lap ${r.laps}${r.done ? ' (finished @'+r.finishStr+')' : ''}`);
   }
 
-  // ---------- OpenCV loader (with retries & onRuntimeInitialized) ----------
-  function loadScript(url, timeout = 10000){
+  // script loader
+  function loadScript(url, timeout = 8000){
     return new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = url;
@@ -198,94 +195,55 @@
     });
   }
 
-  async function tryLoadOpenCV(){
+  async function tryLoadAruco(){
     libStatusEl.textContent = 'loading...';
     dbg.style.display = 'none';
-    // if already ready
-    if (window.cv && window.cv['onRuntimeInitialized'] && cvReady) { libStatusEl.textContent = 'loaded'; return true; }
-
-    for (const url of OPENCV_CDNS){
+    // if already available
+    if (window.AR && typeof window.AR.Detector === 'function'){
+      libStatusEl.textContent = 'loaded';
+      return true;
+    }
+    for (const url of ARUCO_URLS){
       try {
-        log('Attempting to load OpenCV.js from', url);
-        await loadScript(url, 12000);
-        // wait for the runtime initialization callback to fire (max wait ~12s)
-        const ok = await new Promise((resolve) => {
+        log('Attempting to load js-aruco from', url);
+        await loadScript(url, 8000);
+        // wait briefly for global to be available
+        const ok = await new Promise(resolve => {
           const start = Date.now();
-          // if cv is already initialized
-          if (window.cv && window.cv['onRuntimeInitialized'] && window.cv['ready']) return resolve(true);
-          // attach onRuntimeInitialized if available
-          if (window.cv) {
-            // some builds set cv.onRuntimeInitialized; attach
-            window.cv['onRuntimeInitialized'] = () => { resolve(true); };
-          }
-          // polling fallback
           (function poll(){
-            if (window.cv && window.cv['onRuntimeInitialized'] && window.cv['ready']) return resolve(true);
-            if (Date.now() - start > 12000) return resolve(false);
-            setTimeout(poll, 200);
+            if (window.AR && typeof window.AR.Detector === 'function') return resolve(true);
+            if (Date.now() - start > 4000) return resolve(false);
+            setTimeout(poll, 120);
           })();
         });
-        if (!ok){
-          log('OpenCV loaded but runtime did not initialize in time for', url);
-          continue;
+        if (ok){
+          libStatusEl.textContent = 'loaded';
+          detector = new AR.Detector();
+          log('js-aruco loaded from', url);
+          return true;
+        } else {
+          log('Loaded script but AR.Detector not available for', url);
         }
-        // runtime initialized
-        libStatusEl.textContent = 'loaded';
-        cvReady = true;
-        log('OpenCV ready from', url);
-        // prepare aruco structures (try to create Detector if available)
-        tryInitAruco();
-        return true;
       } catch (e){
-        log('Load failed for', url, e && e.message ? e.message : e);
+        log('Load failed for', url, e.message || e);
       }
     }
     libStatusEl.textContent = 'failed';
     dbg.style.display = '';
-    dbg.textContent = 'OpenCV.js failed to load. Use Retry and open DevTools Network to inspect errors.';
+    dbg.textContent = 'js-aruco failed to load. Check network or host a copy at /aruco.min.js';
     return false;
   }
 
-  function tryInitAruco(){
-    if (!cv || !cv['aruco']) {
-      // Some builds expose aruco under cv.aruco; if not present, detection may still work with lower-level API — we'll check at runtime
-      log('cv.aruco is', !!(cv && cv.aruco));
-    }
-    try {
-      // Preferred new API: cv.aruco.ArucoDetector (OpenCV 4.7+)
-      if (cv.aruco && typeof cv.aruco.ArucoDetector === 'function') {
-        arucoDictionary = new cv.aruco.Dictionary(cv.aruco.DICT_6X6_250);
-        arucoParams = new cv.aruco.DetectorParameters();
-        arucoDetector = new cv.aruco.ArucoDetector(arucoDictionary, arucoParams);
-        log('ArucoDetector created (new API).');
-      } else if (cv.aruco && typeof cv.aruco.getPredefinedDictionary === 'function') {
-        // older style
-        arucoDictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_250);
-        arucoParams = new cv.aruco.DetectorParameters();
-        // we will use cv.aruco.detectMarkers(...) in loop
-        arucoDetector = null;
-        log('Using cv.aruco.getPredefinedDictionary + detectMarkers fallback.');
-      } else {
-        // If cv.aruco not present, detection won't work
-        log('cv.aruco not available in this OpenCV build — ArUco detection may not be supported.');
-        arucoDetector = null;
-      }
-    } catch (e){
-      console.warn('Aruco init error', e);
-      arucoDetector = null;
-    }
-  }
-
-  // Kick initial load attempt
-  tryLoadOpenCV();
+  // initialize by attempting to load js-aruco (no OpenCV)
+  tryLoadAruco();
 
   libRetryBtn.addEventListener('click', async () => {
     libStatusEl.textContent = 'retrying...';
     dbg.style.display = 'none';
-    await tryLoadOpenCV();
+    await tryLoadAruco();
   });
 
-  // ---------- Camera enabling with drawImage fix ----------
+  // Canvas setup for DPR
   function createCanvasContextForVideo(videoWidth, videoHeight){
     const dpr = window.devicePixelRatio || 1;
     canvas.style.width = '100%';
@@ -296,30 +254,29 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  // Camera enable (keeps offscreen video renderable)
   async function enableCamera(){
     try {
-      // ensure OpenCV loaded (attempt if not)
-      if (!cvReady){
-        const ok = await tryLoadOpenCV();
+      // ensure detector available (attempt load if not)
+      if (!(window.AR && typeof window.AR.Detector === 'function')){
+        const ok = await tryLoadAruco();
         if (!ok){
-          alert('OpenCV failed to load. Press "Retry OpenCV Load" and check network console.');
+          alert('js-aruco failed to load. Press Retry and check the Network tab.');
           return;
         }
       }
 
-      // request camera
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal:1280 }, height:{ ideal:720 } },
         audio: false
       });
 
-      // create a video element that is renderable (not display:none)
       video = document.createElement('video');
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
       video.srcObject = stream;
-      // keep off-screen but renderable
+      // keep renderable but off-screen
       video.style.position = 'absolute';
       video.style.left = '-10000px';
       video.style.top = '0';
@@ -331,30 +288,27 @@
       await video.play();
       await new Promise(r => { if (video.readyState >= 2) return r(); video.onloadedmetadata = r; });
 
-      // set canvas to video resolution
       const realW = video.videoWidth || 1280;
       const realH = video.videoHeight || 720;
       createCanvasContextForVideo(realW, realH);
       w = realW; h = realH;
       guideY = Math.round(h * 0.7);
 
-      // ensure aruco prepared
-      if (!arucoDictionary) tryInitAruco();
-      if (!arucoDictionary) {
-        alert('ArUco structures could not be initialized. OpenCV.js build may lack aruco support.');
-        setStatus('Aruco missing');
-      } else {
-        setStatus('Ready (ArUco ready)');
+      // create detector if not already
+      if (!detector && window.AR && typeof window.AR.Detector === 'function'){
+        detector = new AR.Detector();
       }
 
+      setStatus('Ready');
       enableBtn.disabled = true;
       startBtn.disabled = false;
       stopBtn.disabled = false;
       running = true;
-      frameCount = 0; framesDrawn = 0;
+      frameCount = 0;
+      framesDrawn = 0;
       requestAnimationFrame(loop);
       log('Camera enabled', `${w}x${h}`);
-    } catch (e){
+    } catch (e) {
       console.error('Camera error', e);
       alert('Camera error: ' + (e && e.message ? e.message : e));
       setStatus('Camera error');
@@ -377,7 +331,7 @@
     stopBtn.disabled = true;
   }
 
-  // ---------- Main loop: draw + detect using OpenCV ArUco ----------
+  // Main loop: draw + detect via js-aruco
   function loop(){
     if (!running) return;
 
@@ -395,7 +349,7 @@
       ctx.fillRect(0,0,w,h);
     }
 
-    // draw guide line
+    // guide line
     ctx.save();
     ctx.strokeStyle = 'red';
     ctx.lineWidth = Math.max(3, (h/240));
@@ -405,148 +359,56 @@
     ctx.stroke();
     ctx.restore();
 
+    // detection throttle
     frameCount++;
-    if (cvReady && (frameCount % getDetectEvery() === 0) && video && video.readyState >= 2){
-      // Read canvas into cv.Mat
-      let src = null, gray = null;
+    if (detector && (frameCount % getDetectEvery() === 0) && video && video.readyState >= 2){
+      let frame = null;
       try {
-        src = cv.imread(canvas); // reads canvas into RGBA Mat scaled by DPR transform we set earlier
-        gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        frame = ctx.getImageData(0, 0, w, h);
       } catch (e){
-        console.error('cv.imread / cv.cvtColor error', e);
+        console.error('getImageData error', e);
       }
-
-      if (gray){
+      if (frame){
+        let markers = [];
         try {
-          // detection: try modern ArucoDetector if present
-          let corners = new cv.MatVector();
-          let ids = new cv.Mat();
-          if (arucoDetector && typeof arucoDetector.detectMarkers === 'function') {
-            // modern API: arucoDetector.detectMarkers(image, corners, ids)
-            try {
-              arucoDetector.detectMarkers(gray, corners, ids);
-            } catch (e) {
-              // some builds require different call signature
-              try {
-                cv.aruco.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams);
-              } catch (ee) {
-                console.warn('Both detect attempts failed', e, ee);
-              }
-            }
-          } else if (cv.aruco && typeof cv.aruco.detectMarkers === 'function') {
-            // fallback API
-            try {
-              cv.aruco.detectMarkers(gray, arucoDictionary, corners, ids, arucoParams);
-            } catch (e) {
-              console.warn('cv.aruco.detectMarkers failed', e);
-            }
-          } else {
-            // aruco not available
-            dbg.style.display = '';
-            dbg.textContent = 'ArUco not available in this OpenCV build.';
-          }
-
-          // if we have ids and corners, process them
-          if (ids && !ids.empty()){
-            // ids is a Mat of shape (N,1) or (N,). corners is MatVector of N Mats each Nx2x? containing corners
-            const n = ids.rows || ids.cols || ids.data32S?.length || 0;
-            // draw overlays and count
-            ctx.save();
-            ctx.strokeStyle = 'lime';
-            ctx.fillStyle = 'rgba(0,255,0,0.18)';
-            ctx.lineWidth = Math.max(2, h/360);
-            // Read ids into JS array
-            let idArr = [];
-            try {
-              for (let i=0;i<ids.rows;i++){
-                idArr.push(ids.intPtr(i,0)[0]);
-              }
-            } catch (e){
-              // fallback for different shapes
-              try {
-                const idData = ids.data32S || ids.data32F || ids.data8U;
-                for (let i=0;i<idData.length;i++) idArr.push(idData[i]);
-              } catch (ee){}
-            }
-
-            for (let i=0;i<idArr.length;i++){
-              const id = idArr[i];
-              try {
-                const cornerMat = corners.get(i); // Nx1x2-ish mat
-                // cornerMat is typically 4x1x2 or 1x4x2; extract points
-                let cx=0, cy=0, pts = [];
-                // extract points by reading float data
-                if (cornerMat.rows >= 4 && cornerMat.cols >= 1){
-                  // iterate rows
-                  for (let r=0;r<cornerMat.rows;r++){
-                    // each entry has 2 floats
-                    const x = cornerMat.floatAt(r,0*2 || 0); // sometimes API differs; we'll read using data32F
-                  }
-                }
-                // safer: convert to typed array by reading data32F and grouping by 2
-                const data = cornerMat.data32F || cornerMat.data32F || cornerMat.data32F;
-                if (data && data.length >= 8){
-                  for (let k=0;k<4;k++){
-                    const x = data[k*2];
-                    const y = data[k*2+1];
-                    pts.push({x,y});
-                    cx += x; cy += y;
-                  }
-                  cx /= 4; cy /= 4;
-                } else {
-                  // try alternative access using .data32S or .data
-                  const dataAlt = cornerMat.data32S || cornerMat.data;
-                  if (dataAlt && dataAlt.length >= 8){
-                    for (let k=0;k<4;k++){
-                      const x = dataAlt[k*2];
-                      const y = dataAlt[k*2+1];
-                      pts.push({x,y});
-                      cx += x; cy += y;
-                    }
-                    cx /= 4; cy /= 4;
-                  } else {
-                    // fallback: skip
-                    continue;
-                  }
-                }
-
-                // draw center dot
-                ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
-
-                // draw polygon
-                if (pts.length === 4){
-                  ctx.beginPath();
-                  ctx.moveTo(pts[0].x, pts[0].y);
-                  for (let p=1;p<4;p++) ctx.lineTo(pts[p].x, pts[p].y);
-                  ctx.closePath(); ctx.stroke();
-                }
-
-                ensureRow(id);
-                if (counting && Math.abs(cy - guideY) <= getTol()){
-                  countLap(id);
-                }
-
-                cornerMat.delete();
-              } catch (e){
-                console.warn('Corner parse error', e);
-              }
-            }
-            ctx.restore();
-          }
-
-          // cleanup
-          corners.delete && corners.delete();
-          ids.delete && ids.delete();
+          markers = detector.detect(frame);
         } catch (e){
-          console.warn('ArUco detect / processing error', e);
-        } finally {
-          gray.delete && gray.delete();
-          src.delete && src.delete();
+          console.warn('Detector error', e);
         }
-      } else {
-        // cleanup if created partially
-        src && src.delete && src.delete();
+        if (markers && markers.length){
+          ctx.save();
+          ctx.strokeStyle = 'lime';
+          ctx.fillStyle = 'rgba(0,255,0,0.18)';
+          ctx.lineWidth = Math.max(2, h/360);
+          for (const m of markers){
+            // marker corners: array of {x,y}
+            let cx = 0, cy = 0;
+            for (const c of m.corners){
+              cx += c.x; cy += c.y;
+            }
+            cx /= m.corners.length; cy /= m.corners.length;
+
+            // draw center dot
+            ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, h/200), 0, Math.PI*2); ctx.fill();
+
+            // draw polygon
+            if (m.corners.length >= 4){
+              ctx.beginPath();
+              ctx.moveTo(m.corners[0].x, m.corners[0].y);
+              for (let i=1;i<m.corners.length;i++) ctx.lineTo(m.corners[i].x, m.corners[i].y);
+              ctx.closePath(); ctx.stroke();
+            }
+
+            // m.id may be undefined for some marker dictionaries; js-aruco tries to decode id.
+            const id = (typeof m.id === 'number') ? m.id : (m.markerId ?? -1);
+            ensureRow(id);
+            // counting when center is near guideY
+            if (counting && Math.abs(cy - guideY) <= getTol()){
+              countLap(id);
+            }
+          }
+          ctx.restore();
+        }
       }
     }
 
@@ -560,7 +422,7 @@
     requestAnimationFrame(loop);
   }
 
-  // ---------- Timer ----------
+  // Timer
   function startTimer(){
     startTime = Date.now();
     timerEl.textContent = '00:00';
@@ -573,10 +435,9 @@
     timerTick = null;
   }
 
-  // ---------- Start / Stop counting ----------
+  // Start/Stop counting
   function startCounting(){
-    if (!cvReady) { alert('OpenCV not ready. Retry loading.'); return; }
-    if (!stream) { alert('Enable camera first'); return; }
+    if (!detector || !stream) { alert('Enable camera first'); return; }
     if (counting) return;
     counting = true;
     startTimer();
@@ -606,7 +467,7 @@
     log('Counting stopped ' + new Date().toISOString());
   }
 
-  // ---------- Export ----------
+  // Export CSV
   function exportCSV(){
     const rows = [['tag_id','laps','finish','finish_ms']];
     for (const id of Object.keys(runners)){
@@ -629,23 +490,21 @@
     log('CSV exported');
   }
 
-  // ---------- Events ----------
+  // Events
   enableBtn.addEventListener('click', enableCamera);
   startBtn.addEventListener('click', startCounting);
   stopBtn.addEventListener('click', stopCounting);
   exportBtn.addEventListener('click', exportCSV);
-  libRetryBtn.addEventListener('click', tryLoadOpenCV);
+  libRetryBtn.addEventListener('click', tryLoadAruco);
 
-  // stop camera on unload
+  // safely stop camera on unload
   window.addEventListener('beforeunload', () => {
-    if (stream) stream.getTracks().forEach(t=>t.stop());
+    if (stream) stream.getTracks().forEach(t => t.stop());
   });
 
   // initial UI
   setStatus('Idle');
-  libStatusEl.textContent = 'loading...';
-  log('Ready. The app will attempt to load OpenCV.js (ArUco). If loading fails, open DevTools Network tab and retry.');
-
+  log('App ready. Loading js-aruco (pure JS) — this avoids OpenCV/WASM issues on Vercel. If loading fails, vendor aruco.min.js in your project and change ARUCO_URLS to a local path.');
   </script>
 </body>
 </html>
