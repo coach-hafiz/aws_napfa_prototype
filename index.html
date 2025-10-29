@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>QR Lap Counter — Multi-QR (jsQR)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>QR Lap Counter — Multi-QR (BarcodeDetector + ZXing fallback)</title>
 <style>
   :root{ --accent:#015871; --bg:#fafafa }
   *{ box-sizing:border-box }
@@ -25,7 +25,7 @@
   .log{ white-space:pre-wrap; font-size:13px; color:#333; margin-top:8px }
   .muted{ color:#666; font-size:13px }
   .debugVideo{ position:absolute; right:8px; top:8px; width:160px; height:auto; border:2px solid rgba(255,255,255,0.9); border-radius:6px; display:none; z-index:20 }
-  .controls { display:flex; gap:8px; align-items:center; }
+  .controls{ display:flex; gap:8px; align-items:center }
   @media (max-width:640px){ header{ flex-direction:column; align-items:flex-start } }
 </style>
 </head>
@@ -34,10 +34,12 @@
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
-      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <button id="stopBtn"  class="secondary" disabled>Stop</button>
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
       <button id="testBtn" class="secondary" disabled>Test Detector</button>
-      <label style="display:flex;align-items:center;gap:6px;margin-left:6px"><input id="showVideo" type="checkbox"/> Show video</label>
+      <label style="display:flex;align-items:center;gap:6px;margin-left:6px">
+        <input id="showVideo" type="checkbox"/> Show video
+      </label>
     </div>
 
     <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
@@ -53,8 +55,8 @@
   </header>
 
   <div class="container">
-    <div class="video-wrap" id="videoWrap">
-      <!-- We draw BOTH the video and overlays onto this canvas (reliable on mobile). -->
+    <div class="video-wrap">
+      <!-- We render BOTH the video and overlays into this canvas (reliable on mobile) -->
       <canvas id="view" aria-label="Camera view with overlay"></canvas>
       <video id="debugVideo" class="debugVideo" playsinline muted></video>
     </div>
@@ -72,31 +74,32 @@
         <div id="status" class="log">Idle. Tap "Enable Camera" to allow camera access.</div>
         <div style="margin-top:12px;" class="muted">Notes</div>
         <div class="log muted">
-          • Use large, matte QR codes with the runner number as content (e.g., "23").<br/>
-          • Hold steady near the guide line; good light helps. This scanner finds multiple QRs by checking a grid of tiles each frame.
+          • Uses <b>BarcodeDetector</b> for multi-QR when available (fast).<br/>
+          • Falls back to <b>ZXing</b> JS on a grid of tiles to detect many QRs per frame.<br/>
+          • Print large, matte QR bibs with the runner number as content (e.g., "23").
         </div>
       </div>
     </div>
   </div>
 
-  <!-- jsQR library (CDN) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- ZXing core (fallback path) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 
   <script>
   (function(){
     // ===== DOM =====
-    const canvas   = document.getElementById('view');
-    const ctx      = canvas.getContext('2d', { willReadFrequently: true });
-    const tbody    = document.getElementById('tbody');
-    const statusEl = document.getElementById('status');
-    const timerEl  = document.getElementById('timer');
-    const enableBtn= document.getElementById('enableBtn');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn  = document.getElementById('stopBtn');
-    const exportBtn= document.getElementById('exportBtn');
-    const testBtn  = document.getElementById('testBtn');
-    const lapsSel  = document.getElementById('lapsSelect');
-    const debugVid = document.getElementById('debugVideo');
+    const canvas    = document.getElementById('view');
+    const ctx       = canvas.getContext('2d', { willReadFrequently:true });
+    const tbody     = document.getElementById('tbody');
+    const statusEl  = document.getElementById('status');
+    const timerEl   = document.getElementById('timer');
+    const enableBtn = document.getElementById('enableBtn');
+    const startBtn  = document.getElementById('startBtn');
+    const stopBtn   = document.getElementById('stopBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const testBtn   = document.getElementById('testBtn');
+    const lapsSel   = document.getElementById('lapsSelect');
+    const debugVid  = document.getElementById('debugVideo');
     const showVideoCb = document.getElementById('showVideo');
 
     // ===== State =====
@@ -104,11 +107,19 @@
     let w=1280, h=720, guideY=Math.round(h*0.7);
     let running=false, counting=false, startTime=0, timerInt=null;
     const COOLDOWN=1500; // ms per ID
-    const runners={};    // key -> {laps, done, last, finish}
+    const runners={};    // id -> {laps, done, last, finish}
     let frameCount=0;
 
-    function setStatus(...a){ const t=a.join(' '); statusEl.textContent=t; console.log(t); }
-    function msToMMSS(ms){ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+    // Detector path flags
+    let useBarcodeDetector = false;
+    let barcodeDetector = null;
+    let zxingReader = null; // QRCodeReader
+
+    // ===== Utils =====
+    const setStatus=(...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };
+    const msToMMSS=(ms)=>{ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+    const cssSafe=(s)=> String(s).replace(/[^a-z0-9_-]/gi,'_');
+    const escapeHtml=(s)=> String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
     function ensureRow(id){
       if (runners[id]) return;
@@ -124,36 +135,27 @@
     }
     function countLap(id){
       if (!counting) return;
-      const now = Date.now();
-      const r = runners[id];
-      if (!r) return;
-      if (r.done) return;
+      const now=Date.now(), r=runners[id];
+      if (!r || r.done) return;
       if (now - r.last < COOLDOWN) return;
       r.laps++; r.last = now;
-      const req = parseInt(lapsSel.value, 10);
+      const req = parseInt(lapsSel.value,10);
       if (r.laps >= req){ r.done = true; r.finish = msToMMSS(now - startTime); }
       updateRow(id);
       setStatus(`Runner ${id} lap ${r.laps}${r.done?' — finished':''}`);
     }
 
-    // Sanitize helpers
-    function cssSafe(s){ return String(s).replace(/[^a-z0-9_-]/gi,'_'); }
-    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
     // ===== Camera =====
     async function enableCamera(){
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        setStatus('Browser does not support getUserMedia.'); return;
-      }
+      if (!navigator.mediaDevices?.getUserMedia){ setStatus('getUserMedia not supported'); return; }
       setStatus('Requesting camera…');
       try{
         stream = await navigator.mediaDevices.getUserMedia({
           video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
           audio:false
         });
-      }catch(e){
-        setStatus('Camera error: '+(e.message||e)); enableBtn.disabled=false; return;
-      }
+      }catch(e){ setStatus('Camera error: '+(e.message||e)); enableBtn.disabled=false; return; }
+
       video = document.createElement('video');
       video.srcObject = stream; video.playsInline = true; video.muted = true; video.autoplay = true;
       debugVid.srcObject = stream;
@@ -164,97 +166,168 @@
       w = video.videoWidth || w; h = video.videoHeight || h;
       canvas.width = w; canvas.height = h; guideY = Math.round(h*0.7);
 
-      enableBtn.disabled = true; startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=true; testBtn.disabled=false;
+      // Choose detector path
+      if ('BarcodeDetector' in window){
+        try{
+          barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+          useBarcodeDetector = true;
+          setStatus('✅ Using native BarcodeDetector (multi-QR).');
+        }catch(e){
+          useBarcodeDetector = false;
+          setStatus('BarcodeDetector init failed, falling back to ZXing…');
+        }
+      } else {
+        setStatus('BarcodeDetector not available, using ZXing fallback…');
+      }
+
+      // Prepare ZXing fallback
+      if (!useBarcodeDetector){
+        // Ensure ZXing is present
+        if (!window.ZXing || !window.ZXing.QRCodeReader){
+          setStatus('ZXing not loaded. Check CDN.');
+          enableBtn.disabled=false; return;
+        }
+        zxingReader = new ZXing.QRCodeReader();
+      }
+
+      enableBtn.disabled=true; startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=true; testBtn.disabled=false;
       if (!running){ running=true; requestAnimationFrame(loop); }
       setStatus('Camera ready. Aim QR codes at the red line, then press Start.');
     }
 
-    // ===== Multi-QR detection with jsQR =====
-    // jsQR returns only one code per call. We detect multiple by scanning:
-    // 1) full frame
-    // 2) a small grid of tiles (3x2) and merging unique results.
-    function detectQRCodes(imageData){
-      const results = [];
-      const seen = new Set();
+    // ===== Detection =====
+    async function detectBarcodesNative(){
+      // BarcodeDetector can take the <video> element directly
+      try{
+        const barcodes = await barcodeDetector.detect(video); // returns array with .rawValue and .cornerPoints
+        return (barcodes||[]).map(b=>{
+          const pts = b.cornerPoints || [];
+          let cx=0, cy=0;
+          if (pts.length){ for (const p of pts){ cx+=p.x; cy+=p.y; } cx/=pts.length; cy/=pts.length; }
+          return { id: b.rawValue, cx, cy, corners: pts };
+        });
+      }catch(e){
+        // Some devices require canvas snapshot; fallback
+        try{
+          const frame = ctx.getImageData(0,0,w,h);
+          const off = document.createElement('canvas'); off.width=w; off.height=h;
+          const octx = off.getContext('2d'); octx.putImageData(frame,0,0);
+          const barcodes = await barcodeDetector.detect(off);
+          return (barcodes||[]).map(b=>{
+            const pts = b.cornerPoints || [];
+            let cx=0, cy=0; if (pts.length){ for (const p of pts){ cx+=p.x; cy+=p.y; } cx/=pts.length; cy/=pts.length; }
+            return { id: b.rawValue, cx, cy, corners: pts };
+          });
+        }catch(err){ console.warn('BarcodeDetector.detect failed:', err); return []; }
+      }
+    }
 
-      function pushResult(code, offsetX=0, offsetY=0){
-        if (!code) return;
-        const data = code.data;
-        if (!data || seen.has(data)) return;
-        const loc = code.location;
-        // compute center
-        const cx = (loc.topLeftCorner.x + loc.topRightCorner.x + loc.bottomLeftCorner.x + loc.bottomRightCorner.x)/4 + offsetX;
-        const cy = (loc.topLeftCorner.y + loc.topRightCorner.y + loc.bottomLeftCorner.y + loc.bottomRightCorner.y)/4 + offsetY;
-        results.push({ id: data, cx, cy, loc, offsetX, offsetY });
-        seen.add(data);
+    function detectBarcodesZXing(){
+      // Multi-QR via grid tiling (e.g., 4x3). Increase if you need more simultanous codes.
+      const cols = 4, rows = 3;
+      const seen = new Set();
+      const results = [];
+
+      function decodeTile(x,y,tw,th){
+        try{
+          const tile = ctx.getImageData(x,y,tw,th);
+          // Build luminance source & binarizer
+          const luminance = new ZXing.RGBLuminanceSource(tile.data, tw, th);
+          const bin = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminance));
+          const res = zxingReader.decode(bin); // throws if none
+          if (res?.getText){
+            const id = res.getText();
+            if (!seen.has(id)){
+              seen.add(id);
+              // compute approximate centre from points if available
+              const pts = res.getResultPoints?.() || res.getResultPoints || [];
+              let cx = x + tw/2, cy = y + th/2;
+              if (pts.length){
+                cx = x + pts.reduce((s,p)=>s+p.getX(),0)/pts.length;
+                cy = y + pts.reduce((s,p)=>s+p.getY(),0)/pts.length;
+              }
+              results.push({ id, cx, cy, corners: null });
+            }
+          }
+        }catch(e){ /* no code in this tile */ }
       }
 
-      // 1) full frame
-      const codeFull = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
-      pushResult(codeFull, 0, 0);
+      // 1) Whole frame quick try
+      try{
+        const frame = ctx.getImageData(0,0,w,h);
+        const lum = new ZXing.RGBLuminanceSource(frame.data, w, h);
+        const bin = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+        const res = zxingReader.decode(bin);
+        if (res?.getText){
+          const id = res.getText();
+          if (!seen.has(id)){
+            seen.add(id);
+            const pts = res.getResultPoints?.() || [];
+            let cx=w/2, cy=h/2;
+            if (pts.length){
+              cx = pts.reduce((s,p)=>s+p.getX(),0)/pts.length;
+              cy = pts.reduce((s,p)=>s+p.getY(),0)/pts.length;
+            }
+            results.push({ id, cx, cy, corners: null });
+          }
+        }
+      }catch(e){ /* ignore */ }
 
-      // 2) grid tiles (3x2)
-      const cols = 3, rows = 2;
-      const tileW = Math.floor(imageData.width / cols);
-      const tileH = Math.floor(imageData.height / rows);
-      for (let r=0; r<rows; r++){
-        for (let c=0; c<cols; c++){
-          const x = c * tileW;
-          const y = r * tileH;
-          const tile = ctx.getImageData(x, y, tileW, tileH);
-          const code = jsQR(tile.data, tile.width, tile.height, { inversionAttempts: "attemptBoth" });
-          pushResult(code, x, y);
+      // 2) Grid tiles
+      const tw = Math.floor(w/cols), th = Math.floor(h/rows);
+      for (let r=0;r<rows;r++){
+        for (let c=0;c<cols;c++){
+          decodeTile(c*tw, r*th, tw, th);
         }
       }
+
       return results;
     }
 
     // ===== Loop =====
-    function loop(){
+    async function loop(){
       if (!running) return;
-
-      // draw video
+      // draw video frame
       if (video && video.readyState>=2) ctx.drawImage(video, 0, 0, w, h);
       else ctx.clearRect(0,0,w,h);
 
-      // red guide
-      ctx.strokeStyle='red'; ctx.lineWidth = Math.max(3, h/220);
+      // guide line
+      ctx.strokeStyle='red'; ctx.lineWidth=Math.max(3, h/220);
       ctx.beginPath(); ctx.moveTo(0,guideY); ctx.lineTo(w,guideY); ctx.stroke();
 
-      // detect (every frame or throttle to every 2nd frame)
+      // detect
       frameCount++;
-      if (video && video.readyState>=2 && (frameCount % 1 === 0)){
+      if (video && video.readyState>=2){
+        let dets = [];
         try{
-          const frame = ctx.getImageData(0,0,w,h);
-          const dets = detectQRCodes(frame);
-
-          if (dets.length){
-            ctx.save();
-            ctx.strokeStyle = 'lime'; ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.lineWidth = Math.max(2, h/360);
-            for (const d of dets){
-              const { id, cx, cy, loc } = d;
-              // draw polygon box
-              if (loc){
-                ctx.beginPath();
-                ctx.moveTo(loc.topLeftCorner.x, loc.topLeftCorner.y);
-                ctx.lineTo(loc.topRightCorner.x, loc.topRightCorner.y);
-                ctx.lineTo(loc.bottomRightCorner.x, loc.bottomRightCorner.y);
-                ctx.lineTo(loc.bottomLeftCorner.x, loc.bottomLeftCorner.y);
-                ctx.closePath(); ctx.stroke();
-              }
-              // center dot
-              ctx.beginPath(); ctx.arc(cx,cy, Math.max(4,h/200), 0, Math.PI*2); ctx.fill();
-
-              // prepare table
-              ensureRow(id);
-              if (counting && Math.abs(cy - guideY) < Math.max(16, h/60)){
-                countLap(id);
-              }
-            }
-            ctx.restore();
+          if (useBarcodeDetector){
+            dets = await detectBarcodesNative();
+          } else {
+            // throttle ZXing a bit for FPS
+            if (frameCount % 2 === 0) dets = detectBarcodesZXing();
           }
-        }catch(e){
-          console.warn('detect loop error:', e);
+        }catch(e){ console.warn('detect error:', e); }
+
+        if (dets.length){
+          ctx.save();
+          ctx.strokeStyle='lime'; ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.lineWidth=Math.max(2,h/360);
+          for (const d of dets){
+            // draw rough polygon if we have corners
+            if (d.corners && d.corners.length){
+              ctx.beginPath();
+              ctx.moveTo(d.corners[0].x, d.corners[0].y);
+              for (let i=1;i<d.corners.length;i++) ctx.lineTo(d.corners[i].x, d.corners[i].y);
+              ctx.closePath(); ctx.stroke();
+            }
+            // centre dot
+            ctx.beginPath(); ctx.arc(d.cx, d.cy, Math.max(4,h/200), 0, Math.PI*2); ctx.fill();
+
+            ensureRow(d.id);
+            if (counting && Math.abs(d.cy - guideY) < Math.max(16, h/60)){
+              countLap(d.id);
+            }
+          }
+          ctx.restore();
         }
       }
 
@@ -262,10 +335,14 @@
     }
 
     // ===== Test once =====
-    function testDetectorOnce(){
+    async function testDetectorOnce(){
       if (!video || video.readyState<2){ setStatus('Video not ready'); return; }
-      const frame = ctx.getImageData(0,0,w,h);
-      const dets = detectQRCodes(frame);
+      let dets = [];
+      if (useBarcodeDetector){
+        dets = await detectBarcodesNative();
+      } else {
+        dets = detectBarcodesZXing();
+      }
       if (dets.length){
         setStatus(`Test: detected ${dets.length} QR code(s). Example: ${String(dets[0].id).slice(0,30)}`);
       } else {
@@ -286,21 +363,15 @@
     function stopCounting(){
       if (!counting) return;
       counting=false; clearInterval(timerInt); timerInt=null;
-      for (const id of Object.keys(runners)){
-        const r = runners[id];
-        if (!r.done){ r.finish='DNF'; updateRow(id); }
-      }
+      for (const id of Object.keys(runners)){ const r=runners[id]; if (!r.done){ r.finish='DNF'; updateRow(id); } }
       startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
       setStatus('Counting stopped — export available.');
     }
     function exportCSV(){
       const rows = [['Runner ID (QR data)','Laps','Finish']];
-      for (const id of Object.keys(runners)){
-        const r = runners[id]; rows.push([id, String(r.laps), r.finish]);
-      }
+      for (const id of Object.keys(runners)){ const r=runners[id]; rows.push([id, String(r.laps), r.finish]); }
       const csv = rows.map(r=> r.map(c=> (typeof c==='string' && c.includes(',')) ? `"${c.replace(/"/g,'""')}"` : c).join(',')).join('\n');
-      const blob = new Blob([csv], { type:'text/csv' });
-      const url  = URL.createObjectURL(blob);
+      const blob = new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob);
       const a=document.createElement('a'); a.href=url; a.download=`laps_${new Date().toISOString()}.csv`; document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url); exportBtn.disabled=true; setStatus('CSV exported');
     }
