@@ -1,297 +1,330 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>QR Lap Tracker</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>QR Lap Counter (Responsive • Portrait/Landscape)</title>
 <style>
-  :root {
-    --accent: #036;
-    --bg: #fafafa;
-  }
-  body {
-    margin: 0;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: #111;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-  }
+  :root{ --accent:#015871; --bg:#f7f7f7 }
+  *{ box-sizing:border-box }
+  html,body{ height:100% }
+  body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
 
-  header {
-    background: #fff;
-    border-bottom: 1px solid #e6e6e6;
-    padding: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
+  /* Main responsive layout */
+  .layout{
+    display:grid;
+    width:100%;
+    height:100vh; /* Use full viewport for clean split */
+    grid-template-areas:
+      "visual"
+      "table";
+    grid-template-rows: 50vh 1fr;  /* Portrait default: 50% + 50% */
+    grid-template-columns: 1fr;
   }
-
-  button {
-    background: var(--accent);
-    color: #fff;
-    border: 0;
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-weight: 600;
-  }
-  button.secondary {
-    background: #666;
-  }
-
-  #layout {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    transition: all 0.3s ease;
-  }
-
-  #video-container, #results-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: auto;
-    padding: 8px;
-  }
-
-  #video {
-    width: 100%;
-    height: auto;
-    border-radius: 10px;
-    background: #000;
-  }
-
-  #canvas {
-    display: none;
-  }
-
-  #status {
-    font-size: 14px;
-    color: #444;
-    margin-top: 8px;
-    text-align: center;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  thead {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  th, td {
-    padding: 8px;
-    text-align: center;
-    border-bottom: 1px solid #f0f0f0;
-  }
-
-  tr.done {
-    background: #e9f6ec;
-  }
-
-  /* Landscape layout: split left/right */
-  @media (orientation: landscape) {
-    #layout {
-      flex-direction: row;
-    }
-    #video-container, #results-container {
-      width: 50%;
-      height: 100%;
-    }
-    #video {
-      width: 90%;
-      height: auto;
+  @media (orientation:landscape){
+    .layout{
+      grid-template-areas: "visual table";
+      grid-template-columns: 50vw 1fr;   /* Left half = visual */
+      grid-template-rows: 100vh;
     }
   }
+
+  .visual{ grid-area: visual; display:flex; flex-direction:column; background:#000 }
+  .controls{
+    display:flex; gap:8px; align-items:center; padding:10px;
+    background:#fff; border-bottom:1px solid #e6e6e6; flex-wrap:wrap;
+  }
+  @media (orientation:landscape){
+    .controls{ border-bottom:none; border-right:1px solid #e6e6e6 }
+  }
+
+  button{
+    background:var(--accent); color:#fff; border:0; border-radius:12px;
+    font-weight:700; font-size:16px; padding:10px 14px; min-width:120px; height:44px;
+  }
+  button.secondary{ background:#666 }
+  select,input[type=number]{ height:44px; font-size:16px; border:1px solid #ccc; border-radius:12px; padding:0 10px }
+  .timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:88px }
+
+  .stage{ position:relative; flex:1; background:#000; overflow:hidden }
+  /* We render BOTH video and overlays on this canvas so mobile never loses the red line */
+  #view{ display:block; width:100%; height:100% }
+
+  .tablePane{ grid-area: table; padding:10px; overflow:auto; display:flex; flex-direction:column; gap:10px }
+  .card{ background:#fff; border:1px solid #eee; border-radius:12px; overflow:hidden }
+  .card h3{ margin:0; padding:10px; background:var(--accent); color:#fff; font-size:16px }
+  .card-body{ padding:10px }
+  .status{ white-space:pre-wrap; font-size:13px; color:#333 }
+
+  table{ width:100%; border-collapse:collapse }
+  th,td{ border-bottom:1px solid #f0f0f0; padding:8px; text-align:center; font-size:14px }
+  thead th{ background:#f4f7f9 }
+  tr.done{ background:#e9f6ec }
+
+  .hint{ font-size:12px; color:#666 }
 </style>
 </head>
 <body>
+  <div class="layout">
+    <!-- VISUAL HALF (video+line+buttons) -->
+    <section class="visual">
+      <div class="controls">
+        <button id="enableBtn">Enable Camera</button>
+        <button id="startBtn" class="secondary" disabled>Start</button>
+        <button id="stopBtn" class="secondary" disabled>Stop</button>
+        <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+        <label class="hint">Req. Laps
+          <select id="lapsSelect" aria-label="Required laps">
+            <option>1</option><option>2</option><option>3</option>
+            <option selected>4</option><option>5</option><option>6</option>
+            <option>7</option><option>8</option><option>9</option><option>10</option>
+          </select>
+        </label>
+        <div class="timer" id="timer">00:00</div>
+      </div>
+      <div class="stage">
+        <!-- Hidden <video> as camera source (required by browsers) -->
+        <video id="video" playsinline muted style="display:none"></video>
+        <!-- We draw video + overlays on this canvas -->
+        <canvas id="view"></canvas>
+      </div>
+    </section>
 
-<header>
-  <button id="enableBtn">Enable Camera</button>
-  <button id="startBtn" class="secondary" disabled>Start</button>
-  <button id="stopBtn" class="secondary" disabled>Stop</button>
-  <button id="exportBtn" class="secondary" disabled>Export CSV</button>
-  <label>Laps:
-    <select id="lapsSelect">
-      <option value="1">1</option><option value="2">2</option>
-      <option value="3">3</option><option value="4" selected>4</option>
-      <option value="5">5</option><option value="6">6</option>
-      <option value="7">7</option><option value="8">8</option>
-    </select>
-  </label>
-  <div id="timer">00:00</div>
-</header>
-
-<div id="layout">
-  <div id="video-container">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas"></canvas>
-    <div id="status">Idle. Click "Enable Camera".</div>
+    <!-- RESULTS HALF (table + status) -->
+    <section class="tablePane">
+      <div class="card">
+        <h3>Scanned Runner IDs & Laps</h3>
+        <div class="card-body">
+          <table>
+            <thead><tr><th>ID</th><th>Laps</th><th>Finish</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Status</h3>
+        <div class="card-body">
+          <div id="status" class="status">Idle. Tap “Enable Camera”.</div>
+          <div class="hint" style="margin-top:8px">
+            Tip: Use **plain QR codes** (numeric ID preferred). Print large (A6/A5), matte paper.
+            The app counts a lap when the QR’s **center** crosses the red line.
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <div id="results-container">
-    <table>
-      <thead><tr><th>ID</th><th>Laps</th><th>Finish</th></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
-</div>
+  <!-- jsQR (pure JS QR reader) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
-<!-- QR detection library -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.min.js"></script>
+  <script>
+  (function(){
+    // ---- DOM ----
+    const video   = document.getElementById('video');
+    const canvas  = document.getElementById('view');
+    const ctx     = canvas.getContext('2d', { willReadFrequently:true });
+    const statusEl= document.getElementById('status');
+    const tbody   = document.getElementById('tbody');
+    const enableBtn = document.getElementById('enableBtn');
+    const startBtn  = document.getElementById('startBtn');
+    const stopBtn   = document.getElementById('stopBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const lapsSel   = document.getElementById('lapsSelect');
+    const timerEl   = document.getElementById('timer');
 
-<script>
-(function(){
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const enableBtn = document.getElementById('enableBtn');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const exportBtn = document.getElementById('exportBtn');
-  const tbody = document.getElementById('tbody');
-  const statusEl = document.getElementById('status');
-  const timerEl = document.getElementById('timer');
-  const lapsSelect = document.getElementById('lapsSelect');
+    // ---- State ----
+    let stream=null, running=false, counting=false;
+    let w=1280, h=720, guideY=0;
+    let startTime=0, tick=null, frameCount=0;
+    const COOLDOWN=1500; // ms per ID
+    const runners={};    // id -> {laps, done, last, finish}
 
-  let stream = null;
-  let running = false, counting = false;
-  let startTime = 0, timerInt = null;
-  const COOLDOWN = 1500;
-  const runners = {};
-  const guideYRatio = 0.7;
+    // ---- Utils ----
+    const setStatus=(...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };
+    const msToMMSS=(ms)=>{ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
 
-  function setStatus(msg){ statusEl.textContent = msg; console.log(msg); }
-  function msToMMSS(ms){ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+    function ensureRow(id){
+      if (runners[id]) return;
+      runners[id] = { laps:0, done:false, last:0, finish:'-' };
+      const tr = document.createElement('tr'); tr.id = 'r-'+id;
+      tr.innerHTML = `<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
+      tbody.appendChild(tr);
+    }
+    function updateRow(id){
+      document.getElementById('laps-'+id).textContent = runners[id].laps;
+      document.getElementById('fin-'+id).textContent  = runners[id].finish;
+      if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
+    }
+    function startTimer(){
+      startTime=Date.now(); timerEl.textContent='00:00';
+      if (tick) clearInterval(tick);
+      tick=setInterval(()=>{ timerEl.textContent=msToMMSS(Date.now()-startTime); },1000);
+    }
+    function stopTimer(){ if (tick) clearInterval(tick); tick=null; }
 
-  function ensureRow(id){
-    if (runners[id]) return;
-    runners[id] = { laps:0, done:false, last:0, finish:'-' };
-    const tr=document.createElement('tr'); tr.id='r-'+id;
-    tr.innerHTML=`<td>${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
-    tbody.appendChild(tr);
-  }
+    // ---- Lap logic ----
+    function countLap(id){
+      if (!counting) return;
+      const now=Date.now(); const r=runners[id];
+      if (r.done) return;
+      if (now - r.last < COOLDOWN) return; // cooldown to avoid double-count
+      r.laps++; r.last=now;
+      const req=parseInt(lapsSel.value,10);
+      if (r.laps >= req){ r.done=true; r.finish=msToMMSS(now-startTime); }
+      updateRow(id);
+      setStatus(`ID ${id} → Lap ${r.laps}${r.done?' (Finished)':''}`);
+    }
 
-  function updateRow(id){
-    document.getElementById('laps-'+id).textContent=runners[id].laps;
-    document.getElementById('fin-'+id).textContent=runners[id].finish;
-    if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
-  }
+    // ---- Camera ----
+    async function enableCamera(){
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        setStatus('getUserMedia unsupported.'); return;
+      }
+      try{
+        setStatus('Requesting camera…');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+          audio:false
+        });
+      }catch(e){
+        setStatus('Camera error: '+(e.message||e)); return;
+      }
 
-  function countLap(id){
-    if (!counting) return;
-    const now=Date.now();
-    const r=runners[id];
-    if (r.done) return;
-    if (now - r.last < COOLDOWN) return;
-    r.laps++; r.last=now;
-    const req=parseInt(lapsSelect.value,10);
-    if (r.laps >= req){ r.done=true; r.finish=msToMMSS(now - startTime); }
-    updateRow(id);
-    setStatus(`QR ${id} lap ${r.laps}${r.done?' — finished':''}`);
-  }
-
-  async function enableCamera(){
-    if (!navigator.mediaDevices) { setStatus('Camera not supported'); return; }
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width:{ideal:1280}, height:{ideal:720} },
-        audio: false
-      });
       video.srcObject = stream;
-      await video.play();
-      setStatus('Camera enabled. Press Start to begin scanning.');
-      enableBtn.disabled = true; startBtn.disabled = false;
-    } catch(e){
-      setStatus('Camera error: '+e.message);
+      video.playsInline = true; video.muted = true;
+      try{ await video.play(); }catch(e){ /* mobile may delay */ }
+      await new Promise(r=>{
+        if (video.readyState>=2) r();
+        else video.onloadedmetadata = r;
+      });
+
+      // Size canvas to video; compute guide line at 70% of height
+      w = video.videoWidth  || w;
+      h = video.videoHeight || h;
+      canvas.width = w; canvas.height = h;
+      guideY = Math.round(h*0.7);
+
+      running = true;
+      enableBtn.disabled=true; startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=true;
+      setStatus('Camera ready. Aim QR at the red line. Press Start to track laps.');
+      requestAnimationFrame(loop);
     }
-  }
 
-  function startCounting(){
-    if (!stream) { setStatus('Enable camera first'); return; }
-    counting = true; startTime = Date.now();
-    timerEl.textContent='00:00';
-    timerInt = setInterval(()=>{ timerEl.textContent=msToMMSS(Date.now()-startTime); },1000);
-    startBtn.disabled = true; stopBtn.disabled = false; exportBtn.disabled = true;
-    running = true;
-    scanLoop();
-    setStatus('Counting started');
-  }
-
-  function stopCounting(){
-    counting = false;
-    clearInterval(timerInt);
-    stopBtn.disabled = true; exportBtn.disabled = false; startBtn.disabled = false;
-    for (const id in runners) {
-      if (!runners[id].done){ runners[id].finish='DNF'; updateRow(id); }
+    // ---- Draw helpers ----
+    function drawGuide(){
+      ctx.strokeStyle='red';
+      ctx.lineWidth = Math.max(3, h/220);
+      ctx.beginPath(); ctx.moveTo(0,guideY); ctx.lineTo(w,guideY); ctx.stroke();
     }
-    setStatus('Counting stopped — export available');
-  }
-
-  function exportCSV(){
-    const rows=[['ID','Laps','Finish']];
-    for (const id of Object.keys(runners)){
-      const r=runners[id];
-      rows.push([id,r.laps,r.finish]);
+    function drawQRBox(loc){
+      ctx.save();
+      ctx.strokeStyle='lime'; ctx.lineWidth = Math.max(2, h/360);
+      ctx.beginPath();
+      ctx.moveTo(loc.topLeftCorner.x, loc.topLeftCorner.y);
+      ctx.lineTo(loc.topRightCorner.x, loc.topRightCorner.y);
+      ctx.lineTo(loc.bottomRightCorner.x, loc.bottomRightCorner.y);
+      ctx.lineTo(loc.bottomLeftCorner.x, loc.bottomLeftCorner.y);
+      ctx.closePath(); ctx.stroke();
+      ctx.restore();
     }
-    const csv=rows.map(r=>r.join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download='laps_'+new Date().toISOString()+'.csv';
-    document.body.appendChild(a);
-    a.click(); a.remove();
-    exportBtn.disabled=true;
-  }
 
-  async function scanLoop(){
-    if (!running) return;
-    if (video.readyState>=2){
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video,0,0,canvas.width,canvas.height);
-      const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts:"dontInvert" });
-      const guideY = canvas.height * guideYRatio;
+    // ---- Main loop ----
+    function loop(){
+      if (!running) return;
 
-      // red guide line
-      ctx.strokeStyle='red'; ctx.lineWidth=Math.max(3,canvas.height/220);
-      ctx.beginPath(); ctx.moveTo(0,guideY); ctx.lineTo(canvas.width,guideY); ctx.stroke();
+      // Draw video frame
+      if (video.readyState >= 2){
+        ctx.drawImage(video, 0, 0, w, h);
+      } else {
+        ctx.clearRect(0,0,w,h);
+      }
 
-      if (code){
-        ctx.beginPath(); ctx.lineWidth=3; ctx.strokeStyle='lime';
-        ctx.moveTo(code.location.topLeftCorner.x, code.location.topLeftCorner.y);
-        ctx.lineTo(code.location.topRightCorner.x, code.location.topRightCorner.y);
-        ctx.lineTo(code.location.bottomRightCorner.x, code.location.bottomRightCorner.y);
-        ctx.lineTo(code.location.bottomLeftCorner.x, code.location.bottomLeftCorner.y);
-        ctx.closePath(); ctx.stroke();
+      // Red guide line
+      drawGuide();
 
-        const id = code.data.trim();
-        const cy = (code.location.topLeftCorner.y + code.location.bottomLeftCorner.y +
-                    code.location.topRightCorner.y + code.location.bottomRightCorner.y)/4;
-        ensureRow(id);
-        if (Math.abs(cy - guideY) < Math.max(16, canvas.height/60)) countLap(id);
+      // Detect QR every frame or every 2nd frame to save CPU
+      frameCount++;
+      const throttle = 1; // set 2 for lighter CPU
+      if (frameCount % throttle === 0){
+        try{
+          const frame = ctx.getImageData(0,0,w,h);
+          const qr = jsQR(frame.data, w, h, { inversionAttempts: 'dontInvert' });
+          if (qr){
+            // Draw box & compute center
+            drawQRBox(qr.location);
+            const cx = (qr.location.topLeftCorner.x + qr.location.topRightCorner.x +
+                        qr.location.bottomRightCorner.x + qr.location.bottomLeftCorner.x) / 4;
+            const cy = (qr.location.topLeftCorner.y + qr.location.topRightCorner.y +
+                        qr.location.bottomRightCorner.y + qr.location.bottomLeftCorner.y) / 4;
+
+            // Parse ID (prefer numeric, else use raw text)
+            let idStr = (qr.data||'').trim();
+            if (!idStr) {
+              // no data, skip
+            } else {
+              // normalize ID
+              let id = idStr;
+              if (/^\d+$/.test(idStr)) id = String(parseInt(idStr,10));
+              ensureRow(id);
+              // Count lap when QR center crosses the guide band
+              if (Math.abs(cy - guideY) < Math.max(16, h/60)) countLap(id);
+            }
+          }
+        }catch(e){
+          // ignore transient errors to keep loop smooth
+        }
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // ---- Controls ----
+    enableBtn.addEventListener('click', enableCamera, {passive:true});
+    startBtn.addEventListener('click', ()=>{
+      if (!stream){ setStatus('Enable camera first.'); return; }
+      if (counting) return;
+      counting=true; startTimer();
+      startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
+      setStatus('Counting started.');
+    }, {passive:true});
+    stopBtn.addEventListener('click', ()=>{
+      if (!counting) return;
+      counting=false; stopTimer();
+      // Mark DNF
+      for (const id of Object.keys(runners)){
+        if (!runners[id].done){ runners[id].finish='DNF'; updateRow(id); }
+      }
+      startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
+      setStatus('Counting stopped. Export available.');
+    }, {passive:true});
+    exportBtn.addEventListener('click', ()=>{
+      const rows = [['ID','Laps','Finish']];
+      for (const id of Object.keys(runners)){
+        const r=runners[id]; rows.push([id, String(r.laps), r.finish]);
+      }
+      const csv = rows.map(r=> r.map(c=>{
+        if (typeof c==='string' && c.includes(',')) return `"${c.replace(/"/g,'""')}"`;
+        return c;
+      }).join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv'});
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download=`qr_laps_${new Date().toISOString()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      exportBtn.disabled=true;
+      setStatus('CSV exported.');
+    }, {passive:true});
+
+    // Keep canvas sized if orientation changes
+    async function resizeToVideo(){
+      if (!video) return;
+      const vw=video.videoWidth, vh=video.videoHeight;
+      if (vw && vh && (vw!==w || vh!==h)){
+        w=vw; h=vh; canvas.width=w; canvas.height=h; guideY=Math.round(h*0.7);
       }
     }
-    requestAnimationFrame(scanLoop);
-  }
-
-  enableBtn.addEventListener('click', enableCamera);
-  startBtn.addEventListener('click', startCounting);
-  stopBtn.addEventListener('click', stopCounting);
-  exportBtn.addEventListener('click', exportCSV);
-})();
-</script>
+    window.addEventListener('orientationchange', ()=> setTimeout(resizeToVideo, 400));
+    window.addEventListener('resize', ()=> setTimeout(resizeToVideo, 200));
+  })();
+  </script>
 </body>
 </html>
