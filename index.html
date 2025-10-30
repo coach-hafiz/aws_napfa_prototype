@@ -1,403 +1,392 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>QR Lap Tracker — Responsive + Recording</title>
 <style>
-  :root{ --accent:#015871; --bg:#f7f7f7; --card:#fff; --line:red; }
+  :root { --accent:#015871; --bg:#f7f7f7; --card:#ffffff; --line:red; }
   *{ box-sizing:border-box }
-  html,body{ height:100% }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
-
-  /* Root layout switches by orientation */
   .app{
     display:grid;
-    grid-template-rows: 25vh 1fr;  /* Portrait default */
-    height:100dvh;
+    grid-template-areas:
+      "top"
+      "list";
+    grid-template-rows: 25vh 1fr;    /* Portrait: video/buttons in top quarter */
+    grid-template-columns: 1fr;
+    min-height:100vh;
+    gap:10px;
   }
+  header.top{
+    grid-area:top;
+    display:grid;
+    grid-template-areas:"video controls";
+    grid-template-columns: 1fr auto;
+    gap:10px;
+    padding:10px;
+    background:var(--card);
+    border-bottom:1px solid #eaeaea;
+  }
+  .videoWrap{ grid-area:video; position:relative; background:#000; border-radius:10px; overflow:hidden; }
+  video#cam{ width:100%; height:100%; object-fit:cover; display:block; }
+  canvas#overlay{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .controls{ grid-area:controls; display:flex; flex-direction:column; gap:8px; justify-content:flex-start; align-items:stretch; }
+  .controls .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  button{
+    background:var(--accent); color:#fff; border:0; padding:10px 14px; border-radius:10px; font-weight:700; font-size:16px;
+  }
+  button.secondary{ background:#666 }
+  select, .timer{
+    height:44px; padding:0 10px; border:1px solid #ccc; border-radius:10px; background:#fff; font-size:16px; display:flex; align-items:center;
+  }
+  .timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:90px; justify-content:center; }
+  main.list{
+    grid-area:list; padding:10px;
+  }
+  .tableCard{
+    background:var(--card); border:1px solid #eee; border-radius:12px; overflow:hidden; height:100%; display:flex; flex-direction:column;
+  }
+  .tableCard header{ background:var(--accent); color:#fff; padding:10px; font-weight:700 }
+  .tableWrap{ overflow:auto; flex:1; }
+  table{ width:100%; border-collapse:collapse; }
+  th,td{ border-bottom:1px solid #f2f2f2; padding:10px; text-align:center; font-size:14px }
+  tr.done{ background:#e9f6ec }
+  .status{ padding:10px; font-size:13px; color:#444 }
+  .hint{ font-size:12px; color:#666; padding:0 10px 10px; }
+
+  /* LANDSCAPE: video/buttons on left half, table on right half */
   @media (orientation:landscape){
     .app{
-      grid-template-rows: none;
-      grid-template-columns: 1fr 1fr; /* Left: video quarter->half; Right: list */
+      grid-template-areas:"left right";
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 100vh;
+      gap:10px;
     }
-  }
-
-  /* Video/controls pane */
-  .pane{
-    position:relative;
-    background:#000;
-    overflow:hidden;
-  }
-  /* We draw video + overlays on one canvas for mobile reliability */
-  canvas#view{ width:100%; height:100%; display:block; touch-action:none; background:#000 }
-
-  /* Controls bar sits on top of video area */
-  .controls{
-    position:absolute; left:0; right:0; top:0;
-    display:flex; gap:8px; align-items:center; padding:8px;
-    background:linear-gradient( to bottom, rgba(0,0,0,.6), rgba(0,0,0,.1) 70%, transparent );
-  }
-  .controls button{
-    background:var(--accent); color:#fff; border:0; border-radius:10px;
-    padding:10px 12px; font-weight:700; font-size:16px;
-  }
-  .controls button.secondary{ background:#666 }
-  .controls .timer{
-    margin-left:auto; color:#fff; font-variant-numeric:tabular-nums; font-weight:700; min-width:80px; text-align:right;
-  }
-
-  /* Right/bottom panel with results */
-  .panel{
-    background:var(--card); border-radius:0; border-left:1px solid #eee; border-top:1px solid #eee;
-    display:flex; flex-direction:column; min-height:0;
-  }
-  @media (orientation:portrait){
-    .panel{ border-left:none; }
-  }
-  .panelHead{ padding:10px 12px; border-bottom:1px solid #eee; display:flex; gap:8px; align-items:center }
-  .panelHead .status{ font-size:12px; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-  .list{
-    padding:8px 12px; overflow:auto; flex:1;
-  }
-  .row{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:10px 8px; border-bottom:1px solid #f0f0f0; font-size:15px;
-  }
-  .row .id{ font-weight:700 }
-  .row.done{ background:#e9f6ec }
-  .hint{ font-size:12px; color:#666; padding:8px 12px }
-
-  .pill{
-    display:inline-block; padding:6px 10px; border-radius:999px; background:#eef3f5; color:#234; font-size:13px
+    header.top{
+      grid-area:left;
+      grid-template-areas:
+        "video"
+        "controls";
+      grid-template-rows: 1fr auto;
+      grid-template-columns: 1fr;
+      height:100%;
+    }
+    main.list{ grid-area:right; }
   }
 </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Video + overlays + controls -->
-    <section class="pane">
-      <canvas id="view" aria-label="Camera view with overlay and virtual start line"></canvas>
-      <div class="controls">
+<div class="app">
+  <header class="top">
+    <div class="videoWrap">
+      <video id="cam" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="controls">
+      <div class="row">
         <button id="enableBtn">Enable Camera</button>
         <button id="startBtn" class="secondary" disabled>Start</button>
-        <button id="stopBtn"  class="secondary" disabled>Stop</button>
-        <button id="clearBtn" class="secondary" disabled>Clear</button>
-        <span class="timer" id="timer">00:00</span>
+        <button id="stopBtn" class="secondary" disabled>Stop</button>
       </div>
-    </section>
-
-    <!-- Results area -->
-    <section class="panel">
-      <div class="panelHead">
-        <span class="pill">QR Mode</span>
-        <div id="status" class="status">Idle. Tap “Enable Camera”.</div>
+      <div class="row">
+        <label class="timer" id="timer">00:00</label>
+        <select id="lapsSelect" title="Required laps">
+          <!-- 1..20 -->
+        </select>
+        <select id="lineSelect" title="Start line position">
+          <option value="0.7" selected>Line @ 70% height</option>
+          <option value="0.5">Line @ 50% height</option>
+          <option value="0.3">Line @ 30% height</option>
+        </select>
       </div>
-      <div class="hint">Portrait: video + controls in the top quarter; results below. Landscape: video left half; results right half.</div>
-      <div id="list" class="list" aria-live="polite"></div>
-    </section>
-  </div>
+      <div class="status" id="status">Idle — tap “Enable Camera”.</div>
+      <div class="hint">Tip: Print **QR codes** large (A6/A5). The QR <b>text</b> is treated as the <b>runner ID</b>.</div>
+    </div>
+  </header>
 
-  <!-- QR decoder -->
-  <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <main class="list">
+    <div class="tableCard">
+      <header>Scanned Runners</header>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>Runner ID (QR text)</th><th>Laps</th><th>Finish Time</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
 
-  <script>
-  (function(){
-    // --- DOM ---
-    const canvas = document.getElementById('view');
-    const ctx    = canvas.getContext('2d', { willReadFrequently:true });
-    const enableBtn = document.getElementById('enableBtn');
-    const startBtn  = document.getElementById('startBtn');
-    const stopBtn   = document.getElementById('stopBtn');
-    const clearBtn  = document.getElementById('clearBtn');
-    const timerEl   = document.getElementById('timer');
-    const statusEl  = document.getElementById('status');
-    const listEl    = document.getElementById('list');
+<!-- jsQR for QR detection -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
+<script>
+(function(){
+  // DOM
+  const video     = document.getElementById('cam');
+  const overlay   = document.getElementById('overlay');
+  const octx      = overlay.getContext('2d');
+  const tbody     = document.getElementById('tbody');
+  const statusEl  = document.getElementById('status');
+  const timerEl   = document.getElementById('timer');
+  const enableBtn = document.getElementById('enableBtn');
+  const startBtn  = document.getElementById('startBtn');
+  const stopBtn   = document.getElementById('stopBtn');
+  const lapsSelect= document.getElementById('lapsSelect');
+  const lineSelect= document.getElementById('lineSelect');
 
-    // --- State ---
-    let stream=null, video=null;
-    let W=1280, H=720;
-    let guideY=0; // virtual start line Y
-    let running=false, counting=false, startTime=0, timerInt=null;
-    let frameCount=0, DETECT_EVERY=2; // throttle QR decode
-    const COOLDOWN=1500; // ms per ID between counts
-    const runners = new Map(); // id -> {laps, last, finishedAt?}
-    const scans   = [];        // chronological {id, t, type:'lap'|'finish'}
-    // Recording
-    let recorder=null, recChunks=[], recFileName='run_session.webm';
+  // Populate laps 1..20
+  for(let i=1;i<=20;i++){
+    const opt=document.createElement('option'); opt.value=String(i); opt.textContent=`${i} lap${i>1?'s':''}`;
+    if(i===4) opt.selected=true;
+    lapsSelect.appendChild(opt);
+  }
 
-    // --- Utils ---
-    const setStatus = (...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };
-    const mmss = (s)=> `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-    const since = (t0)=> mmss(Math.floor((Date.now()-t0)/1000));
-    function layoutAndSizeCanvas(){
-      // Make canvas match its rendered CSS box for crisp drawing
-      const rect = canvas.getBoundingClientRect();
-      canvas.width  = Math.max(320, Math.round(rect.width));
-      canvas.height = Math.max(240, Math.round(rect.height));
-      W = canvas.width; H = canvas.height;
-      guideY = Math.round(H*0.70); // 70% from top
+  // State
+  let stream=null;
+  let runningPreview=false, counting=false;
+  let guideRatio=0.7;  // as fraction of overlay height
+  let guideY=0;        // pixels (computed)
+  let w=0, h=0;
+  let frameCount=0;
+  const runners={}; // id -> {laps,last,done,finish}
+  const COOLDOWN=1500; // ms per ID
+
+  // Recording
+  let mediaRecorder=null, chunks=[], recording=false;
+
+  // Offscreen processing canvas (full-res)
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', { willReadFrequently:true });
+
+  // Utils
+  const setStatus=(...a)=>{ statusEl.textContent=a.join(' '); console.log(...a); };
+  function fitOverlay(){
+    // Match overlay size to displayed video box (client size), for drawing the red line
+    const rect = video.getBoundingClientRect();
+    overlay.width  = video.clientWidth;
+    overlay.height = video.clientHeight;
+    guideY = Math.round(overlay.height * guideRatio);
+  }
+  function updateTimer(startMs){
+    const s = Math.floor((Date.now()-startMs)/1000);
+    const mm=String(Math.floor(s/60)).padStart(2,'0');
+    const ss=String(s%60).padStart(2,'0');
+    timerEl.textContent=`${mm}:${ss}`;
+  }
+  function ensureRow(id){
+    if (runners[id]) return;
+    runners[id]={ laps:0, last:0, done:false, finish:'-' };
+    const tr=document.createElement('tr'); tr.id='r-'+id;
+    tr.innerHTML=`<td class="id">${id}</td><td id="laps-${id}">0</td><td id="fin-${id}">-</td>`;
+    tbody.appendChild(tr);
+  }
+  function updateRow(id){
+    document.getElementById('laps-'+id).textContent = runners[id].laps;
+    document.getElementById('fin-'+id).textContent  = runners[id].finish;
+    if (runners[id].done) document.getElementById('r-'+id).classList.add('done');
+  }
+  function countLap(id, startMs){
+    const now=Date.now();
+    const r=runners[id];
+    if (r.done) return;
+    if (now - r.last < COOLDOWN) return;
+    r.laps++; r.last=now;
+    const req=parseInt(lapsSelect.value,10);
+    if (r.laps>=req){ r.done=true; r.finish = timerEl.textContent; }
+    updateRow(id);
+    setStatus(`Counted lap for ${id} (${r.laps}/${req})`);
+  }
+  function markDNFForUnfinished(){
+    for (const id of Object.keys(runners)){
+      if (!runners[id].done){ runners[id].finish='DNF'; updateRow(id); }
     }
+  }
 
-    function ensureRunner(id){
-      if (!runners.has(id)) runners.set(id, { laps:0, last:0, finishedAt:null });
-    }
-
-    function renderList(){
-      listEl.innerHTML = '';
-      // Show finished first then ongoing, sorted by ID
-      const all = Array.from(runners.entries()).sort((a,b)=> String(a[0]).localeCompare(String(b[0])));
-      for (const [id, r] of all){
-        const row = document.createElement('div');
-        row.className = 'row' + (r.finishedAt ? ' done' : '');
-        const l = document.createElement('div'); l.className='id'; l.textContent = id;
-        const laps = document.createElement('div'); laps.textContent = `Laps: ${r.laps}`;
-        const fin = document.createElement('div'); fin.textContent = r.finishedAt ? `Finish: ${r.finishedAt}` : (r.laps>0?'—':'');
-        row.appendChild(l); row.appendChild(laps); row.appendChild(fin);
-        listEl.appendChild(row);
-      }
-    }
-
-    function markScan(id){
-      const req = 4; // NAPFA 1.6km = 4 laps (adjust if needed)
-      const now = Date.now();
-      ensureRunner(id);
-      const r = runners.get(id);
-      if (r.finishedAt) return;             // already finished
-      if (now - r.last < COOLDOWN) return;  // cooldown
-      r.laps += 1;
-      r.last = now;
-      scans.push({ id, t: now, type: 'lap' });
-      if (r.laps >= req){
-        const stamp = since(startTime);
-        r.finishedAt = stamp;
-        scans.push({ id, t: now, type: 'finish' });
-      }
-      renderList();
-      setStatus(`Scan: ${id} (lap ${r.laps}${r.finishedAt? ' — finished':''})`);
-    }
-
-    // --- Camera & drawing ---
-    async function enableCamera(){
-      if (!navigator.mediaDevices?.getUserMedia){
-        setStatus('getUserMedia not supported on this browser.');
-        return;
-      }
-      setStatus('Requesting camera…');
-
-      // Prepare hidden <video>
-      video = document.createElement('video');
-      video.playsInline = true; video.muted = true; video.autoplay = true;
-
-      // Try rear camera first, then fallbacks
-      let ok=false, err=null;
-      const attempts = [
-        { video: { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false },
-        { video: { facingMode:'environment' }, audio:false },
-        { video: true, audio:false }
-      ];
-      for (const c of attempts){
-        try{
-          stream = await navigator.mediaDevices.getUserMedia(c);
-          ok = true; break;
-        }catch(e){ err = e; }
-      }
-      if (!ok){ setStatus('Camera error: '+(err?.message||err)); return; }
-
-      video.srcObject = stream;
-      try{ await video.play(); }catch(e){}
-      await new Promise(r=>{
-        if (video.readyState >= 2) r(); else video.onloadedmetadata = r;
+  // Camera + recording
+  async function enableCamera(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+        audio: false
       });
-
-      // Size canvas to CSS box
-      layoutAndSizeCanvas();
-      setStatus('Camera ready. Aim QR codes at the red line, then press Start.');
-      startBtn.disabled = false; stopBtn.disabled = true; clearBtn.disabled = false;
-      enableBtn.disabled = true;
-
-      // Start preview loop (draw even before Start)
-      running = true;
-      requestAnimationFrame(loop);
+    }catch(e){
+      setStatus('Camera error: '+(e.message||e)); enableBtn.disabled=false; return;
     }
 
-    function drawGuide(){
-      // Red line
-      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
-      ctx.lineWidth = Math.max(3, H/240);
-      ctx.beginPath(); ctx.moveTo(0, guideY); ctx.lineTo(W, guideY); ctx.stroke();
+    video.srcObject=stream;
+    video.muted = true; video.playsInline = true; // iOS
+    await video.play();
+    await new Promise(r=> (video.readyState>=2? r() : video.onloadedmetadata=r) );
 
-      // Small label
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      const pad = 6, boxH = 24, boxW = 140;
-      ctx.fillRect(8, guideY - boxH - 6, boxW, boxH);
-      ctx.fillStyle = '#fff';
-      ctx.font = `${Math.max(12, Math.floor(H/48))}px system-ui, sans-serif`;
-      ctx.fillText('Virtual start line', 14, guideY - 10);
-    }
+    // processing canvas at sensor resolution
+    w = video.videoWidth  || 1280;
+    h = video.videoHeight || 720;
+    proc.width=w; proc.height=h;
 
-    function loop(){
-      if (!running) return;
-      // Draw video into canvas
-      if (video && video.readyState >= 2){
-        // Ensure we preserve aspect: draw to cover canvas
-        const vW = video.videoWidth, vH = video.videoHeight;
-        if (vW && vH){
-          // Cover fit
-          const scale = Math.max(W/vW, H/vH);
-          const dw = vW*scale, dh = vH*scale;
-          const dx = (W - dw)/2, dy = (H - dh)/2;
-          ctx.drawImage(video, dx, dy, dw, dh);
-        } else {
-          ctx.clearRect(0,0,W,H);
-        }
-      } else {
-        ctx.clearRect(0,0,W,H);
-      }
+    // draw overlay line at displayed size (¼ screen area)
+    fitOverlay();
+    drawOverlayLine();
 
-      drawGuide();
+    enableBtn.disabled=true;
+    startBtn.disabled=false;
+    stopBtn.disabled=true;
+    runningPreview=true;
+    requestAnimationFrame(previewLoop);
 
-      // QR detection (throttled)
-      frameCount++;
-      if (counting && (frameCount % DETECT_EVERY === 0) && window.jsQR){
-        try{
-          const frame = ctx.getImageData(0,0,W,H);
-          // jsQR expects Uint8ClampedArray, width, height
-          const qr = jsQR(frame.data, W, H, { inversionAttempts:'dontInvert' });
-          if (qr && qr.data){
-            // Compute center of QR from location corner points
-            const pts = qr.location;
-            let cx=0, cy=0;
-            const corners = [pts.topLeftCorner, pts.topRightCorner, pts.bottomRightCorner, pts.bottomLeftCorner];
-            for (const p of corners){ cx += p.x; cy += p.y; }
-            cx/=4; cy/=4;
+    setStatus('Camera ready. Press Start to count + record.');
+  }
 
-            // Visuals
-            ctx.save();
-            ctx.strokeStyle='lime'; ctx.lineWidth=Math.max(2, H/360);
-            ctx.beginPath();
-            ctx.moveTo(corners[0].x, corners[0].y);
-            for(let i=1;i<4;i++) ctx.lineTo(corners[i].x, corners[i].y);
-            ctx.closePath(); ctx.stroke();
-            ctx.fillStyle='rgba(0,255,0,0.25)'; ctx.beginPath(); ctx.arc(cx,cy, Math.max(4,H/200), 0, Math.PI*2); ctx.fill();
-            ctx.restore();
+  function drawOverlayLine(){
+    // Draw the guide line over the displayed video (not used for processing)
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    octx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
+    octx.lineWidth = Math.max(3, overlay.height/220);
+    octx.beginPath();
+    octx.moveTo(0, guideY);
+    octx.lineTo(overlay.width, guideY);
+    octx.stroke();
+  }
 
-            const id = String(qr.data).trim(); // runner ID embedded in QR
-            if (Math.abs(cy - guideY) < Math.max(16, H/60)){
-              markScan(id);
+  function previewLoop(){
+    if (!runningPreview) return;
+
+    // Keep the red line visible and scaled to current element size
+    if (frameCount % 15 === 0){ fitOverlay(); drawOverlayLine(); }
+
+    // Detection throttled for performance (every 2nd frame)
+    frameCount++;
+    if (video.readyState >= 2 && window.jsQR && (frameCount % 2 === 0)){
+      // draw the current frame to the offscreen processing canvas at full res
+      pctx.drawImage(video, 0, 0, w, h);
+      const frame = pctx.getImageData(0, 0, w, h);
+      const qr = jsQR(frame.data, w, h, { inversionAttempts: 'attemptBoth' });
+      if (qr && qr.location){
+        // Draw minimal visual marker (in displayed overlay space)
+        const scaleX = overlay.width / w;
+        const scaleY = overlay.height / h;
+        const cx = (qr.location.topLeftCorner.x + qr.location.topRightCorner.x +
+                    qr.location.bottomLeftCorner.x + qr.location.bottomRightCorner.x) / 4;
+        const cy = (qr.location.topLeftCorner.y + qr.location.topRightCorner.y +
+                    qr.location.bottomLeftCorner.y + qr.location.bottomRightCorner.y) / 4;
+
+        // dot
+        octx.save();
+        octx.fillStyle='rgba(0,255,0,0.35)';
+        octx.beginPath();
+        octx.arc(cx*scaleX, cy*scaleY, Math.max(4, overlay.height/200), 0, Math.PI*2);
+        octx.fill();
+        octx.restore();
+
+        // Counting if started and crosses virtual line
+        if (counting){
+          const id = String(qr.data).trim();
+          if (id){
+            ensureRow(id);
+            const req = parseInt(lapsSelect.value,10);
+            if (Math.abs((cy*scaleY) - guideY) < Math.max(16, overlay.height/60)){
+              countLap(id);
             }
           }
-        }catch(e){ console.warn('QR detect error', e); }
-      }
-
-      requestAnimationFrame(loop);
-    }
-
-    // --- Recording (canvas stream) ---
-    function startRecording(){
-      if (!('MediaRecorder' in window)){
-        setStatus('MediaRecorder not supported on this device/browser — session video won’t be recorded.');
-        return;
-      }
-      try{
-        const fps = 30;
-        const cStream = canvas.captureStream ? canvas.captureStream(fps) : null;
-        if (!cStream){ setStatus('Canvas captureStream not supported.'); return; }
-
-        recChunks = [];
-        recorder = new MediaRecorder(cStream, { mimeType: pickSupportedMime() });
-        recorder.ondataavailable = (e)=>{ if (e.data && e.data.size) recChunks.push(e.data); };
-        recorder.onstop = saveRecording;
-        recorder.start(); // start collecting data
-        setStatus('Recording started.');
-        recFileName = `run_session_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
-      }catch(e){
-        console.warn('Recorder error', e);
-        setStatus('Could not start recording: '+(e.message||e));
-        recorder = null;
+        }
       }
     }
 
-    function pickSupportedMime(){
-      const prefs = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4;codecs=h264' // often not available in MediaRecorder
-      ];
-      for (const m of prefs){
-        if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) return m;
-      }
-      return '';
-    }
+    requestAnimationFrame(previewLoop);
+  }
 
-    function saveRecording(){
-      if (!recChunks.length) return;
-      const blob = new Blob(recChunks, { type: recChunks[0].type || 'video/webm' });
+  function startRecording(){
+    if (!stream){ setStatus('No camera stream to record.'); return; }
+    if (typeof MediaRecorder === 'undefined'){ setStatus('MediaRecorder not supported on this device.'); return; }
+    // Some mobile browsers prefer specific mime types
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
+               : MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8'
+               : MediaRecorder.isTypeSupported('video/webm')            ? 'video/webm'
+               : '';
+    try{
+      mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+    }catch(e){
+      setStatus('Failed to start recording: '+(e.message||e)); return;
+    }
+    chunks=[];
+    mediaRecorder.ondataavailable = (ev)=>{ if(ev.data && ev.data.size>0) chunks.push(ev.data); };
+    mediaRecorder.onstop = ()=>{
+      const blob = new Blob(chunks, { type: chunks[0]?.type || 'video/webm' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = recFileName;
+      const ts = new Date().toISOString().replace(/[:.]/g,'-');
+      a.href = url; a.download = `run_session_${ts}.webm`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
       setStatus('Recording saved.');
-    }
-
-    function stopRecording(){
-      try{
-        if (recorder && recorder.state !== 'inactive') recorder.stop();
-      }catch(_){}
-      recorder = null;
-    }
-
-    // --- Timer ---
-    function startTimer(){
-      startTime = Date.now();
-      timerEl.textContent = '00:00';
-      timerInt = setInterval(()=>{ timerEl.textContent = since(startTime); }, 1000);
-    }
-    function stopTimer(){
-      clearInterval(timerInt); timerInt=null;
-    }
-
-    // --- Buttons ---
-    enableBtn.addEventListener('click', async ()=>{
-      enableBtn.disabled = true;
-      try{ await enableCamera(); }
-      catch(e){ setStatus('Enable failed: '+(e.message||e)); enableBtn.disabled=false; }
-    });
-
-    startBtn.addEventListener('click', ()=>{
-      if (!stream){ setStatus('Enable Camera first.'); return; }
-      counting = true; startBtn.disabled = true; stopBtn.disabled = false;
-      clearBtn.disabled = true;
-      startTimer(); startRecording();
-      setStatus('Counting + recording started.');
-    });
-
-    stopBtn.addEventListener('click', ()=>{
-      if (!counting) return;
-      counting = false; startBtn.disabled = false; stopBtn.disabled = true; clearBtn.disabled = false;
-      stopTimer(); stopRecording();
-      // Mark any who never scanned as DNF? (Optional. Not requested, so skip.)
-      setStatus('Stopped. Video auto-saved.');
-    });
-
-    clearBtn.addEventListener('click', ()=>{
-      runners.clear(); scans.length = 0;
-      renderList();
-      setStatus('Cleared results.');
-    });
-
-    // --- Resize/orientation handling ---
-    const resize = ()=>{
-      layoutAndSizeCanvas();
     };
-    window.addEventListener('resize', ()=> setTimeout(resize, 150));
-    window.addEventListener('orientationchange', ()=> setTimeout(resize, 350));
+    mediaRecorder.start(1000); // timeslice
+    recording=true;
+    setStatus('Recording…');
+  }
 
-    // Initial size (before camera)
-    layoutAndSizeCanvas();
-  })();
-  </script>
+  function stopRecording(){
+    if (mediaRecorder && recording){
+      recording=false;
+      try{ mediaRecorder.stop(); }catch(e){}
+    }
+  }
+
+  // UI handlers
+  enableBtn.addEventListener('click', async ()=>{
+    enableBtn.disabled=true;
+    await enableCamera();
+  });
+
+  startBtn.addEventListener('click', ()=>{
+    if (!stream){ setStatus('Enable camera first.'); return; }
+    // Reset laps/timer state for a new run
+    for (const id of Object.keys(runners)){
+      runners[id].laps=0; runners[id].last=0; runners[id].done=false; runners[id].finish='-';
+      updateRow(id);
+      document.getElementById('r-'+id)?.classList.remove('done');
+    }
+    counting=true;
+    const t0=Date.now();
+    timerEl.textContent='00:00';
+    const tick = setInterval(()=> updateTimer(t0), 1000);
+    startBtn.dataset.ticker = String(tick);
+    startBtn.disabled=true; stopBtn.disabled=false;
+    startRecording();
+    setStatus('Counting & recording started.');
+  });
+
+  stopBtn.addEventListener('click', ()=>{
+    if (!counting) return;
+    counting=false;
+    // clear timer interval
+    const tick = Number(startBtn.dataset.ticker || 0);
+    if (tick) clearInterval(tick);
+    // mark DNF for unfinished
+    markDNFForUnfinished();
+    // stop and auto-save recording
+    stopRecording();
+    startBtn.disabled=false; stopBtn.disabled=true;
+    setStatus('Stopped — results locked and video saved.');
+  });
+
+  // Adjust virtual line on change
+  lineSelect.addEventListener('change', ()=>{
+    guideRatio = parseFloat(lineSelect.value) || 0.7;
+    fitOverlay(); drawOverlayLine();
+  });
+
+  // Keep overlay aligned on resize/orientation
+  window.addEventListener('resize', ()=>{ fitOverlay(); drawOverlayLine(); });
+  window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ fitOverlay(); drawOverlayLine(); }, 350); });
+
+  // Convenience: warn if jsQR isn’t ready (very rare)
+  window.addEventListener('load', ()=>{
+    if (!window.jsQR){
+      setStatus('Loading jsQR… (if this persists, check your network)'); 
+    }
+  });
+})();
+</script>
 </body>
 </html>
