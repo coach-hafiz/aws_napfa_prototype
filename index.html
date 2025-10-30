@@ -3,23 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>QR Lap Counter — Mobile/Responsive + Recording</title>
+<title>QR Lap Counter — Responsive + Recording</title>
 <style>
   :root{
     --accent:#015871;
     --bg:#f7f7f7;
-    --line: red;
+    --line:red;
   }
   *{ box-sizing:border-box }
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
 
-  /* Layout shell uses CSS grid that swaps by orientation */
-  .app{
-    display:grid;
-    min-height:100vh;
-  }
+  /* App grid switches by orientation */
+  .app{ display:grid; min-height:100vh; }
 
-  /* Portrait: video+controls in the TOP QUARTER; table below */
+  /* Portrait: top quarter (25vh) for video+controls; bottom for table */
   @media (orientation:portrait){
     .app{
       grid-template-rows: 25vh 1fr;
@@ -32,7 +29,7 @@
     .bottom{ grid-area: bottom; }
   }
 
-  /* Landscape: LEFT HALF is video+controls; RIGHT HALF is table */
+  /* Landscape: left half for video+controls; right half for table */
   @media (orientation:landscape){
     .app{
       grid-template-columns: 1fr 1fr;
@@ -44,15 +41,14 @@
     .bottom{ grid-area: right; height:100vh; }
   }
 
-  /* Top area: stack video (canvas) and controls */
+  /* Video+controls container */
   .top{
-    display:grid;
-    grid-template-rows: 1fr auto;
-    background:#000;
     position:relative;
+    background:#000;
+    overflow:hidden;
   }
 
-  /* Canvas shows video + overlays; we render everything into it */
+  /* We render video + overlays into ONE canvas */
   #view{
     width:100%;
     height:100%;
@@ -61,66 +57,53 @@
     touch-action:none;
   }
 
+  /* Controls overlay: always visible, never hidden by table */
   .controls{
-    display:flex;
-    gap:8px;
-    align-items:center;
-    flex-wrap:wrap;
+    position:absolute;
+    left:0; right:0; top:0;
+    z-index:20;
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
     padding:8px;
-    background:rgba(255,255,255,0.95);
-    border-top:1px solid #e6e6e6;
+    background:linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.80) 90%, rgba(255,255,255,0) 100%);
+    border-bottom:1px solid rgba(0,0,0,0.06);
   }
   button{
-    background:var(--accent);
-    color:#fff;
-    border:0;
-    border-radius:10px;
-    font-weight:700;
-    padding:10px 12px;
+    background:var(--accent); color:#fff; border:0; border-radius:10px;
+    font-weight:700; padding:10px 12px;
   }
   button.secondary{ background:#666 }
   select{
-    height:42px;
-    padding:0 10px;
-    border-radius:10px;
-    border:1px solid #ccc;
-    background:#fff;
-    font-weight:600;
+    height:42px; padding:0 10px; border-radius:10px; border:1px solid #ccc; background:#fff; font-weight:600;
   }
-  .timer{
-    font-variant-numeric:tabular-nums;
-    font-weight:700;
-    min-width:78px;
-  }
-  .hint{
-    font-size:12px; color:#444;
-  }
+  .timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:78px }
+  .spacer{ flex:1 1 auto }
 
-  /* Bottom area: table, status, export */
+  /* Bottom pane: table + status, independent scroll */
   .bottom{
-    display:grid;
-    grid-template-rows: auto 1fr auto;
-    gap:8px;
-    padding:10px;
+    display:grid; grid-template-rows: auto 1fr auto; gap:8px; padding:10px;
+    min-height:0; /* allow child scrolling */
   }
   .status{
     font-size:13px; color:#333; white-space:pre-wrap;
     background:#fff; border:1px solid #eee; border-radius:10px; padding:8px;
   }
   .tableWrap{
+    min-height:0; /* for grid */
     background:#fff; border:1px solid #eee; border-radius:10px; overflow:auto;
   }
-  table{
-    width:100%; border-collapse:collapse; font-size:14px;
-  }
+  table{ width:100%; border-collapse:collapse; font-size:14px }
   thead th{
-    position:sticky; top:0; background:var(--accent); color:#fff;
-    padding:8px; z-index:1;
+    position:sticky; top:0; background:var(--accent); color:#fff; padding:8px; z-index:1;
   }
   td,th{ padding:8px; border-bottom:1px solid #f0f0f0; text-align:center }
   tr.done{ background:#e9f6ec }
-  .footerBar{
-    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  .footerBar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:#444 }
+
+  /* Small screens: keep buttons readable */
+  @media (max-width:420px){
+    button{ padding:8px 10px }
+    .timer{ min-width:66px }
+    select{ height:38px }
   }
 </style>
 </head>
@@ -128,27 +111,27 @@
 <div class="app">
   <section class="top">
     <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
+
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
       <button id="stopBtn" class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
 
-      <label for="lapsSel"><span class="hint">Laps</span></label>
-      <select id="lapsSel" aria-label="Number of laps">
-        <!-- 1..20 -->
-      </select>
+      <label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>
+      <select id="lapsSel" aria-label="Number of laps"></select>
 
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
-      <label style="display:flex;align-items:center;gap:6px;margin-left:auto">
+      <span class="spacer"></span>
+      <label style="display:flex;align-items:center;gap:6px">
         <input id="showVideo" type="checkbox" />
-        <span class="hint">Show raw video (debug)</span>
+        <span style="font-size:12px;color:#333">Debug video</span>
       </label>
     </div>
   </section>
 
   <section class="bottom">
-    <div class="status" id="status">Idle. Tap "Enable Camera".</div>
+    <div class="status" id="status">Idle. Tap “Enable Camera”.</div>
     <div class="tableWrap">
       <table>
         <thead>
@@ -163,7 +146,7 @@
       </table>
     </div>
     <div class="footerBar">
-      <div class="hint">• Hold QR steady as it crosses the red line. • Use matte paper, large codes. • Good light.</div>
+      • Use large matte QR codes • Keep steady as you cross the red line • Good lighting improves scans
     </div>
   </section>
 </div>
@@ -186,26 +169,27 @@
   const lapsSel  = document.getElementById('lapsSel');
   const showVideoCb = document.getElementById('showVideo');
 
-  // Populate laps select 1..20 (default 4)
+  // Populate laps 1..20 (default 4)
   for(let i=1;i<=20;i++){
-    const opt = document.createElement('option');
-    opt.value=i; opt.textContent=i; if(i===4) opt.selected=true;
+    const opt=document.createElement('option'); opt.value=i; opt.textContent=i; if(i===4) opt.selected=true;
     lapsSel.appendChild(opt);
   }
 
   // ===== State =====
   let stream=null, video=null;
-  let w=1280, h=720, lineY=0;     // start line Y inside canvas
+  let cw=640, ch=360;    // canvas pixel size (we’ll set properly at runtime)
+  let lineY=0;           // start line (canvas pixels)
   let running=false, counting=false, startTime=0, tick=null;
   let frameCount=0;
-  const runners = new Map(); // id -> {laps: number[], finished: bool, lastTs: number}
-  const COOLDOWN=1200;       // ms per runner to prevent double reads
-  const SCAN_EVERY=2;        // scan every N frames (perf)
+  const runners=new Map();    // id -> {laps: [ms], finished: bool, lastTs: number}
+  const COOLDOWN=1200;        // ms per runner to prevent double-counts
+  const SCAN_EVERY=2;         // scan band every frame; full-frame every N=6 below
+  const FULLFRAME_EVERY=6;
 
-  // Recording via MediaRecorder on the CANVAS (includes overlay line)
+  // Recording from canvas (includes overlays)
   let recorder=null, recordedChunks=[];
 
-  // Debug raw <video> (optional)
+  // Optional debug raw <video>
   let debugVideo=null;
 
   // ===== Helpers =====
@@ -227,18 +211,18 @@
   }
   function updateRunnerRow(id){
     const r = runners.get(id);
-    document.getElementById(`laps-${id}`).textContent = r.laps.length;
-    document.getElementById(`fin-${id}`).textContent  = r.finished ? msToMMSS(r.laps[r.laps.length-1]) : (r.laps.length? msToMMSS(r.laps[r.laps.length-1]) : '-');
-    document.getElementById(`splits-${id}`).textContent = r.laps.length ? r.laps.map(msToMMSS).join(' | ') : '-';
+    const lapsCount = r.laps.length;
+    document.getElementById(`laps-${id}`).textContent = lapsCount;
+    document.getElementById(`fin-${id}`).textContent  = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
+    document.getElementById(`splits-${id}`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
     if (r.finished) document.getElementById('r-'+id)?.classList.add('done');
   }
-
   function countLap(id){
     const now = Date.now();
-    const req = parseInt(lapsSel.value,10);
     const r = runners.get(id);
+    const req = parseInt(lapsSel.value,10);
     if (r.finished) return;
-    if (now - r.lastTs < COOLDOWN) return; // cooldown
+    if (now - r.lastTs < COOLDOWN) return;
     r.laps.push(now - startTime);
     r.lastTs = now;
     if (r.laps.length >= req) r.finished = true;
@@ -246,275 +230,54 @@
     setStatus(`Runner ${id} → Lap ${r.laps.length}${r.finished ? ' (Finished)' : ''}`);
   }
 
-  function stopAllTracks(){
-    if (stream){ for (const t of stream.getTracks()) { try{ t.stop(); }catch(e){} } }
-  }
-
   function startRecording(){
-    recordedChunks = [];
-    let capt = canvas.captureStream ? canvas.captureStream(30) : null;
-    if (!capt){ setStatus('Recording not supported on this browser.'); return; }
-    const mimeCandidates = [
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-      'video/mp4' // often not supported via MediaRecorder
+    recordedChunks=[];
+    const stream = canvas.captureStream ? canvas.captureStream(30) : null;
+    if (!stream){ setStatus('Recording not supported on this browser.'); return; }
+    const candidates=[
+      'video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'
     ];
-    let selMime = '';
-    for (const m of mimeCandidates){ if (MediaRecorder.isTypeSupported(m)) { selMime = m; break; } }
+    let mime=''; for(const m of candidates){ if (MediaRecorder.isTypeSupported(m)) { mime=m; break; } }
     try{
-      recorder = new MediaRecorder(capt, selMime ? { mimeType: selMime } : {});
-    }catch(e){
-      setStatus('MediaRecorder init failed: '+(e.message||e));
-      recorder=null; return;
-    }
-    recorder.ondataavailable = e => { if (e.data && e.data.size) recordedChunks.push(e.data); };
-    recorder.onstop = () => {
+      recorder = new MediaRecorder(stream, mime?{mimeType:mime}:{});
+    }catch(e){ setStatus('MediaRecorder failed: '+(e.message||e)); recorder=null; return; }
+    recorder.ondataavailable = e=>{ if (e.data && e.data.size) recordedChunks.push(e.data); };
+    recorder.onstop = ()=>{
       if (!recordedChunks.length){ setStatus('No recording data.'); return; }
       const blob = new Blob(recordedChunks, { type: recordedChunks[0].type || 'video/webm' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `run_session_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      a.href = url; a.download = `run_session_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       setStatus('Recording saved.');
     };
     recorder.start();
     setStatus('Recording started.');
   }
-
-  function stopRecording(){
-    try{ recorder && recorder.state !== 'inactive' && recorder.stop(); }catch(e){}
-  }
+  function stopRecording(){ try{ recorder && recorder.state!=='inactive' && recorder.stop(); }catch(e){} }
 
   // ===== Camera =====
   async function enableCamera(){
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      setStatus('getUserMedia not supported in this browser.'); return;
+      setStatus('getUserMedia not supported.'); return;
     }
     setStatus('Requesting camera…');
     try{
       stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } },
+        video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
         audio:false
       });
-    }catch(e){
-      setStatus('Camera error: '+(e.message||e));
-      return;
-    }
+    }catch(e){ setStatus('Camera error: '+(e.message||e)); return; }
 
     video = document.createElement('video');
-    video.srcObject = stream;
-    video.playsInline = true;
-    video.muted = true;
+    video.srcObject = stream; video.playsInline = true; video.muted = true;
     await video.play().catch(()=>{});
-    await new Promise(r=>{
-      if (video.readyState>=2) r();
-      else video.onloadedmetadata = r;
-    });
+    await new Promise(r=>{ if (video.readyState>=2) r(); else video.onloadedmetadata=r; });
 
-    // Size canvas to viewport area (quarter in portrait, left half in landscape)
-    resizeCanvasToLayout();
+    resizeCanvasToLayout(); // set canvas pixels to its CSS box
+    enableBtn.disabled = true; startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = true;
 
-    // Optional raw preview for debugging
-    if (showVideoCb.checked){
-      if (!debugVideo){
-        debugVideo = document.createElement('video');
-        debugVideo.style.position='fixed'; debugVideo.style.right='8px'; debugVideo.style.top='8px';
-        debugVideo.style.width='160px'; debugVideo.style.border='2px solid #fff'; debugVideo.style.zIndex=9999;
-        document.body.appendChild(debugVideo);
-      }
-      debugVideo.srcObject = stream; debugVideo.playsInline = true; debugVideo.muted = true; debugVideo.play();
-    }
-
-    enableBtn.disabled = true;
-    startBtn.disabled  = false;
-    stopBtn.disabled   = true;
-    exportBtn.disabled = true;
-
-    running = true;
-    requestAnimationFrame(loop);
-    setStatus('Camera ready. Aim QR at the red line. Press Start to begin timing & recording.');
-  }
-
-  function resizeCanvasToLayout(){
-    // Match canvas to its CSS box in the .top area
-    const rect = canvas.getBoundingClientRect();
-    // To draw correctly, canvas width/height must be set in pixels:
-    canvas.width  = Math.max(320, Math.floor(rect.width  * (window.devicePixelRatio||1)));
-    canvas.height = Math.max(240, Math.floor(rect.height * (window.devicePixelRatio||1)));
-
-    // Draw line at 50% of the canvas height (as requested for landscape; also use for portrait)
-    lineY = Math.round(canvas.height * 0.5);
-  }
-
-  window.addEventListener('resize', ()=>{ resizeCanvasToLayout(); });
-
-  // ===== Main loop: draw video -> overlay -> detect QR =====
-  function loop(){
-    if (!running) return;
-
-    // Draw current video frame scaled to canvas
-    if (video && video.readyState >= 2){
-      // Draw preserving aspect: cover canvas
-      drawVideoCover(video, canvas, ctx);
-    } else {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-    }
-
-    // Draw red start line
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || 'red';
-    ctx.lineWidth = Math.max(3, canvas.height/220);
-    ctx.beginPath();
-    ctx.moveTo(0, lineY);
-    ctx.lineTo(canvas.width, lineY);
-    ctx.stroke();
-
-    // Throttled QR detection
-    frameCount++;
-    if (video && video.readyState>=2 && (frameCount % SCAN_EVERY === 0)){
-      // Read the central band around the line for performance
-      const bandH = Math.max(60, Math.floor(canvas.height/6));
-      const y0 = Math.max(0, lineY - Math.floor(bandH/2));
-      const imgData = ctx.getImageData(0, y0, canvas.width, bandH);
-
-      const qr = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" });
-      if (qr && qr.data){
-        // Compute QR center (relative to the cropped band)
-        const pts = qr.location;
-        const cx = (pts.topLeftCorner.x + pts.topRightCorner.x + pts.bottomLeftCorner.x + pts.bottomRightCorner.x) / 4;
-        const cyBand = (pts.topLeftCorner.y + pts.topRightCorner.y + pts.bottomLeftCorner.y + pts.bottomRightCorner.y) / 4;
-        const cy = y0 + cyBand;
-
-        // Visualize QR bounds
-        ctx.save();
-        ctx.strokeStyle = 'lime';
-        ctx.lineWidth = Math.max(2, canvas.height/360);
-        ctx.beginPath();
-        ctx.moveTo(pts.topLeftCorner.x,           pts.topLeftCorner.y + y0);
-        ctx.lineTo(pts.topRightCorner.x,         pts.topRightCorner.y + y0);
-        ctx.lineTo(pts.bottomRightCorner.x,      pts.bottomRightCorner.y + y0);
-        ctx.lineTo(pts.bottomLeftCorner.x,       pts.bottomLeftCorner.y + y0);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(0,255,0,0.25)';
-        ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, canvas.height/200), 0, Math.PI*2); ctx.fill();
-        ctx.restore();
-
-        // Treat QR data as runner ID (string is fine). Count if near the line (within 10% canvas height)
-        if (Math.abs(cy - lineY) < Math.max(16, canvas.height/10)){
-          const id = String(qr.data).trim();
-          ensureRunner(id);
-          countLap(id);
-        }
-      }
-    }
-
-    requestAnimationFrame(loop);
-  }
-
-  // Draw video covering canvas while preserving aspect ratio (like CSS background-size: cover)
-  function drawVideoCover(video, canvas, ctx){
-    const vw = video.videoWidth || 1280;
-    const vh = video.videoHeight || 720;
-    const cw = canvas.width;
-    const ch = canvas.height;
-    const vr = vw / vh;
-    const cr = cw / ch;
-
-    let sx=0, sy=0, sw=vw, sh=vh;
-    if (cr > vr){
-      // canvas wider → crop video height
-      sw = vw;
-      sh = Math.round(vw / cr);
-      sy = Math.floor((vh - sh)/2);
-      sx = 0;
-    } else {
-      // canvas taller → crop video width
-      sh = vh;
-      sw = Math.round(vh * cr);
-      sx = Math.floor((vw - sw)/2);
-      sy = 0;
-    }
-
-    try{
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-    }catch(e){
-      // On some iOS frames we might hit transient errors
-    }
-  }
-
-  // ===== Controls =====
-  enableBtn.addEventListener('click', async ()=>{
-    enableBtn.disabled = true;
-    await enableCamera();
-  });
-
-  startBtn.addEventListener('click', ()=>{
-    if (!stream){ setStatus('Enable camera first.'); return; }
-    if (counting) return;
-    counting = true;
-    startTime = Date.now();
-    timerEl.textContent = '00:00';
-    tick = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);
-    startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
-
-    // start recording the canvas with overlay
-    startRecording();
-  });
-
-  stopBtn.addEventListener('click', ()=>{
-    if (!counting) return;
-    counting = false;
-    clearInterval(tick); tick=null;
-    // Mark DNF for unfinished
-    for (const [id, r] of runners.entries()){
-      if (!r.finished){
-        // Leave finish as last split, but not finished; no change required
-        // You can uncomment to mark explicit DNF text in UI if desired:
-        // document.getElementById(`fin-${id}`).textContent = 'DNF';
-      }
-    }
-    startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
-
-    // stop recording & auto-save
-    stopRecording();
-    setStatus('Stopped. You can export CSV now.');
-  });
-
-  exportBtn.addEventListener('click', ()=>{
-    // CSV: Runner ID, Total Laps, Finish (last split or '-'), and each Lap split as columns
-    const rows = [];
-    // header
-    const maxLaps = Array.from(runners.values()).reduce((m,r)=> Math.max(m, r.laps.length), 0);
-    const header = ['Runner ID','Total Laps','Finish'].concat(Array.from({length:maxLaps},(_,i)=>`Lap ${i+1}`));
-    rows.push(header);
-
-    for (const [id, r] of runners.entries()){
-      const fin = r.laps.length ? msToMMSS(r.laps[r.laps.length-1]) : '-';
-      const data = r.laps.map(msToMMSS);
-      const row = [id, String(r.laps.length), fin].concat(data);
-      rows.push(row);
-    }
-
-    const csv = rows.map(r=>r.map(c=>{
-      const s=String(c);
-      return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;
-    }).join(',')).join('\n');
-
-    const blob = new Blob([csv], { type:'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href=url; a.download = `qr_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  });
-
-  showVideoCb.addEventListener('change', ()=>{
-    if (!video) return;
+    // Optional debug preview
     if (showVideoCb.checked){
       if (!debugVideo){
         debugVideo = document.createElement('video');
@@ -527,13 +290,167 @@
         document.body.appendChild(debugVideo);
       }
       debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();
-    } else {
-      if (debugVideo){
-        debugVideo.pause();
-        debugVideo.srcObject = null;
-        debugVideo.remove();
-        debugVideo = null;
+    }
+
+    running = true;
+    requestAnimationFrame(loop);
+    setStatus('Camera ready. Aim QR at red line. Press Start to time & record.');
+  }
+
+  // Size canvas to its displayed size with devicePixelRatio, keep line at 50%
+  function resizeCanvasToLayout(){
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    cw = Math.max(320, Math.floor(rect.width * dpr));
+    ch = Math.max(240, Math.floor(rect.height * dpr));
+    canvas.width = cw; canvas.height = ch;
+    lineY = Math.round(ch * 0.5);
+  }
+  window.addEventListener('resize', resizeCanvasToLayout);
+
+  // Draw video covering canvas while preserving aspect (like CSS background-size: cover)
+  function drawVideoCover(video, canvas, ctx){
+    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    const cw = canvas.width, ch = canvas.height;
+    const vr = vw/vh, cr = cw/ch;
+    let sx=0, sy=0, sw=vw, sh=vh;
+    if (cr > vr){ sh = Math.round(vw/cr); sy = Math.floor((vh-sh)/2); }
+    else { sw = Math.round(vh*cr); sx = Math.floor((vw-sw)/2); }
+    try{ ctx.drawImage(video, sx,sy,sw,sh, 0,0,cw,ch); }catch(e){}
+  }
+
+  // ===== Main loop: draw frame → line → scan QR =====
+  function loop(){
+    if (!running) return;
+
+    // video frame
+    if (video && video.readyState>=2) drawVideoCover(video, canvas, ctx);
+    else ctx.clearRect(0,0,cw,ch);
+
+    // red start line
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || 'red';
+    ctx.lineWidth = Math.max(3, ch/220);
+    ctx.beginPath(); ctx.moveTo(0,lineY); ctx.lineTo(cw,lineY); ctx.stroke();
+
+    // detection (band every 2nd frame, full-frame every 6th)
+    frameCount++;
+    if (video && video.readyState>=2){
+      let qr = null;
+
+      if (frameCount % FULLFRAME_EVERY === 0){
+        const frame = ctx.getImageData(0,0,cw,ch);
+        qr = jsQR(frame.data, frame.width, frame.height, { inversionAttempts: "attemptBoth" });
+      } else if (frameCount % SCAN_EVERY === 0){
+        const bandH = Math.max(Math.floor(ch*0.4), 120); // big band (40% of height)
+        const y0 = Math.max(0, lineY - Math.floor(bandH/2));
+        const imgData = ctx.getImageData(0, y0, cw, bandH);
+        qr = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
+
+        if (qr){
+          // Convert band coords back to canvas coords
+          const P = qr.location;
+          const adj = (p)=>({x:p.x, y:p.y + y0});
+          qr.location = {
+            topLeftCorner: adj(P.topLeftCorner),
+            topRightCorner: adj(P.topRightCorner),
+            bottomRightCorner: adj(P.bottomRightCorner),
+            bottomLeftCorner: adj(P.bottomLeftCorner)
+          };
+        }
       }
+
+      if (qr && qr.data){
+        const pts = qr.location;
+        const cx = (pts.topLeftCorner.x + pts.topRightCorner.x + pts.bottomLeftCorner.x + pts.bottomRightCorner.x) / 4;
+        const cy = (pts.topLeftCorner.y + pts.topRightCorner.y + pts.bottomLeftCorner.y + pts.bottomRightCorner.y) / 4;
+
+        // visualize
+        ctx.save();
+        ctx.strokeStyle='lime'; ctx.lineWidth=Math.max(2, ch/360);
+        ctx.beginPath();
+        ctx.moveTo(pts.topLeftCorner.x, pts.topLeftCorner.y);
+        ctx.lineTo(pts.topRightCorner.x, pts.topRightCorner.y);
+        ctx.lineTo(pts.bottomRightCorner.x, pts.bottomRightCorner.y);
+        ctx.lineTo(pts.bottomLeftCorner.x, pts.bottomLeftCorner.y);
+        ctx.closePath(); ctx.stroke();
+        ctx.fillStyle='rgba(0,255,0,0.25)';
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, ch/200), 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+
+        // near line → count
+        if (Math.abs(cy - lineY) < Math.max(16, ch/10)){
+          const id = String(qr.data).trim();
+          if (id){
+            ensureRunner(id);
+            countLap(id);
+          }
+        }
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // ===== Buttons =====
+  enableBtn.addEventListener('click', async ()=>{
+    enableBtn.disabled = true;
+    await enableCamera();
+  });
+
+  startBtn.addEventListener('click', ()=>{
+    if (!stream){ setStatus('Enable camera first.'); return; }
+    if (counting) return;
+    counting = true; startTime = Date.now();
+    timerEl.textContent = '00:00';
+    tick = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);
+    startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
+    startRecording();
+  });
+
+  stopBtn.addEventListener('click', ()=>{
+    if (!counting) return;
+    counting=false; clearInterval(tick); tick=null;
+    startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
+    stopRecording();
+    setStatus('Stopped. You can export CSV now.');
+  });
+
+  exportBtn.addEventListener('click', ()=>{
+    // Build CSV with per-lap splits
+    const rows=[];
+    const maxLaps = Array.from(runners.values()).reduce((m,r)=>Math.max(m, r.laps.length), 0);
+    rows.push(['Runner ID','Total Laps','Finish', ...Array.from({length:maxLaps},(_,i)=>`Lap ${i+1}`)]);
+    for (const [id, r] of runners.entries()){
+      const finish = r.laps.length ? msToMMSS(r.laps[r.laps.length-1]) : '-';
+      rows.push([id, String(r.laps.length), finish, ...r.laps.map(msToMMSS)]);
+    }
+    const csv = rows.map(r=>r.map(c=>{
+      const s=String(c); return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(',')).join('\n');
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download = `qr_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  showVideoCb.addEventListener('change', ()=>{
+    if (!stream) return;
+    if (showVideoCb.checked){
+      if (!debugVideo){
+        debugVideo = document.createElement('video');
+        debugVideo.style.position='fixed';
+        debugVideo.style.right='8px';
+        debugVideo.style.top='8px';
+        debugVideo.style.width='160px';
+        debugVideo.style.border='2px solid #fff';
+        debugVideo.style.zIndex=9999;
+        document.body.appendChild(debugVideo);
+      }
+      debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();
+    }else{
+      if (debugVideo){ debugVideo.pause(); debugVideo.srcObject=null; debugVideo.remove(); debugVideo=null; }
     }
   });
 
