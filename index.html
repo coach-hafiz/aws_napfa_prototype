@@ -253,7 +253,8 @@
     if (constraints.video === true) constraints.video = {};
     if (typeof constraints.video === "object"){
       const facing = window._desiredFacing || "environment";
-      constraints.video.facingMode = { ideal:facing };
+      // Make it MANDATORY instead of just "ideal"
+      constraints.video.facingMode = { exact: facing };
       constraints.video.width  = constraints.video.width  || { ideal: 640 };
       constraints.video.height = constraints.video.height || { ideal: 360 };
     }
@@ -442,8 +443,7 @@ function handleFrame(json){
   const codes=data.topcodes || [];
   const lineY = Math.floor(canvas.height*0.5);
 
-  // DO NOT clear the whole canvas, to avoid flickering the video.
-  // Just draw the line on top.
+  // Draw the line on top of what TopCodes already drew
   ctx.save();
   ctx.strokeStyle="red";
   ctx.lineWidth=3;
@@ -480,8 +480,11 @@ function handleFrame(json){
    User must re-tap "Enable Camera" after changing. */
 camSel.addEventListener("change", () => {
   window._desiredFacing = camSel.value;  // "user" or "environment"
-  setStatus("Camera preference set to: " + camSel.value +
-            ". Tap 'Enable Camera' to apply.");
+  setStatus(
+    "Camera preference set to: " +
+    camSel.value +
+    ". Tap 'Enable Camera' again. On iOS Safari, you may also need to tap the camera icon in the address bar to pick the back camera."
+  );
 });
 
 /* Buttons */
@@ -492,7 +495,11 @@ enableBtn.addEventListener("click",()=>{
     cameraEnabled=true;
     enableBtn.disabled=true;
     startBtn.disabled=false;
-    setStatus("Camera enabled ("+camSel.value+").");
+    setStatus(
+      "Camera enabled (" +
+      camSel.value +
+      "). If you still see the front camera on iOS, tap the camera icon in Safari’s address bar and choose the back camera."
+    );
   }catch(e){
     console.error(e);
     setStatus("Camera error: "+(e.message||e));
