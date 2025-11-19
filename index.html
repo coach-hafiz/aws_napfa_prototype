@@ -19,7 +19,6 @@
     color:#111;
   }
 
-  /* APP GRID */
   .app{ display:grid; min-height:100vh; }
 
   @media (orientation:portrait){
@@ -49,7 +48,6 @@
     min-height:0;
   }
 
-  /* VIDEO CANVAS */
   #view{
     width:100%;
     height:100%;
@@ -58,7 +56,6 @@
     touch-action:none;
   }
 
-  /* CONTROLS OVERLAY */
   .controls{
     position:absolute;
     left:0; right:0; top:0;
@@ -112,7 +109,6 @@
     .timer{ min-width:66px }
   }
 
-  /* STATUS + TABLE */
   .status{
     font-size:13px;
     color:#333;
@@ -165,7 +161,6 @@
 <body>
 <div class="app">
 
-  <!-- TOP: VIDEO + CONTROLS -->
   <section class="top">
     <canvas id="view" width="960" height="540"></canvas>
 
@@ -189,7 +184,6 @@
     </div>
   </section>
 
-  <!-- BOTTOM: STATUS + TABLE -->
   <section class="bottom">
     <div class="status" id="status">
       Idle. Tap “Enable Camera”.
@@ -216,30 +210,58 @@
 
 </div>
 
-<!-- ✓ TopCodes library -->
+<!-- TopCodes library -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
+
+<script>
+/* === Camera monkey-patch: prefer rear camera (environment) === */
+(function forceEnvironmentCamera(){
+  // Patch modern getUserMedia
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function(constraints){
+      constraints = constraints || {};
+      if (constraints.video === true) constraints.video = {};
+      if (typeof constraints.video === 'object' && !constraints.video.facingMode){
+        constraints.video.facingMode = { ideal: 'environment' };
+      }
+      return origGUM(constraints);
+    };
+  }
+
+  // Patch legacy getUserMedia (if TopCodes uses it)
+  const legacy = navigator.getUserMedia ||
+                 navigator.webkitGetUserMedia ||
+                 navigator.mozGetUserMedia;
+  if (legacy) {
+    const boundLegacy = legacy.bind(navigator);
+    navigator.getUserMedia = function(constraints, success, error){
+      constraints = constraints || {};
+      if (constraints.video === true) constraints.video = {};
+      if (typeof constraints.video === 'object' && !constraints.video.facingMode){
+        constraints.video.facingMode = { ideal: 'environment' };
+      }
+      return boundLegacy(constraints, success, error);
+    };
+  }
+})();
+</script>
 
 <script>
 (function(){
 
-/* ============================
-   1. RUNNER ID MAPPING
-   ============================ */
+/* 1. TopCode → Runner ID mapping */
 const TOPCODE_MAP = {
   31:1, 47:2, 55:3, 59:4, 61:5,
   79:6, 87:7, 91:8, 93:9, 103:10,
   107:11, 109:12, 115:13, 117:14, 121:15,
   143:16, 151:17, 155:18, 157:19, 167:20
 };
-
 function mapCode(raw){
   return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
 }
 
-
-/* ============================
-   2. DOM
-   ============================ */
+/* 2. DOM */
 const canvas   = document.getElementById('view');
 const ctx      = canvas.getContext('2d', { willReadFrequently:true });
 const statusEl = document.getElementById('status');
@@ -252,7 +274,7 @@ const exportBtn= document.getElementById('exportBtn');
 const lapsSel  = document.getElementById('lapsSel');
 const recToggle= document.getElementById('recToggle');
 
-/* Populate laps dropdown 1..20 */
+/* Populate laps 1..20 */
 for(let i=1;i<=20;i++){
   const o=document.createElement('option');
   o.value=i; o.textContent=i;
@@ -260,42 +282,33 @@ for(let i=1;i<=20;i++){
   lapsSel.appendChild(o);
 }
 
-/* ============================
-   3. STATE
-   ============================ */
+/* 3. State */
 let cameraEnabled=false;
 let counting=false;
 let startTime=0;
 let timerHandle=null;
-
 const runners=new Map(); // runnerID -> {laps:[], lastCross, finished}
 const COOLDOWN=1200;
-
 let lineY = canvas.height*0.5;
 
 /* Recording */
 let recorder=null;
 let recordedChunks=[];
 
-/* ============================
-   4. HELPERS
-   ============================ */
+/* Helpers */
 function setStatus(msg){
   statusEl.textContent=msg;
   console.log(msg);
 }
-
 function msToMMSS(ms){
   const s=Math.floor(ms/1000);
   const m=Math.floor(s/60);
   const ss=s%60;
   return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
 }
-
 function ensureRunner(id){
   if(runners.has(id)) return;
   runners.set(id,{laps:[],lastCross:0,finished:false});
-
   const tr=document.createElement('tr');
   tr.id='r-'+id;
   tr.innerHTML=`
@@ -306,45 +319,34 @@ function ensureRunner(id){
   `;
   tbody.appendChild(tr);
 }
-
 function updateRunnerRow(id){
   const r=runners.get(id);
   const laps=r.laps.length;
-
   document.getElementById('laps-'+id).textContent=laps;
   document.getElementById('fin-'+id).textContent=
-      laps? msToMMSS(r.laps[laps-1]):'–';
+    laps ? msToMMSS(r.laps[laps-1]) : '–';
   document.getElementById('splits-'+id).textContent=
-      laps? r.laps.map(msToMMSS).join(' | '):'–';
-
+    laps ? r.laps.map(msToMMSS).join(' | ') : '–';
   if(r.finished){
     document.getElementById('r-'+id).classList.add('done');
   }
 }
-
 function countLapFor(id, now){
   const reqLaps=parseInt(lapsSel.value,10);
   ensureRunner(id);
-
   const r=runners.get(id);
   if(r.finished) return;
   if(now-r.lastCross<COOLDOWN) return;
-
   r.laps.push(now-startTime);
   r.lastCross=now;
-
   if(r.laps.length>=reqLaps){
     r.finished=true;
   }
   updateRunnerRow(id);
-
   setStatus(`Runner ${id}: Lap ${r.laps.length}` + (r.finished? " (Finished)" : ""));
 }
 
-
-/* ============================
-   5. TIMER
-   ============================ */
+/* Timer */
 function startTimer(){
   startTime=Date.now();
   timerEl.textContent='00:00';
@@ -352,26 +354,21 @@ function startTimer(){
     timerEl.textContent=msToMMSS(Date.now()-startTime);
   },1000);
 }
-
 function stopTimer(){
   if(timerHandle){ clearInterval(timerHandle); timerHandle=null; }
 }
 
-/* ============================
-   6. RECORDING
-   ============================ */
+/* Recording */
 function startRecording(){
   if(!recToggle.checked) return;
-
   recordedChunks=[];
   const stream = canvas.captureStream ? canvas.captureStream(30) : null;
   if(!stream){
     setStatus("Recording not supported.");
     return;
   }
-  const mime='video/webm';
   try{
-    recorder=new MediaRecorder(stream,{mimeType:mime});
+    recorder=new MediaRecorder(stream,{mimeType:'video/webm'});
   }catch(e){
     recorder=null; return;
   }
@@ -391,29 +388,22 @@ function startRecording(){
   };
   recorder.start();
 }
-
 function stopRecording(){
   try{
     if(recorder && recorder.state!=='inactive') recorder.stop();
   }catch(e){}
 }
 
-
-/* ============================
-   7. TOPCODES CALLBACK
-   ============================ */
+/* TopCodes callback */
 function handleFrame(jsonString){
   let data;
-  try{
-    data=JSON.parse(jsonString);
-  }catch(e){ return; }
-
+  try{ data=JSON.parse(jsonString); }catch(e){ return; }
   const tcodes=data.topcodes || [];
 
-  /* Draw red line */
+  // Red line
   lineY = canvas.height*0.5;
   ctx.save();
-  ctx.strokeStyle= getComputedStyle(document.documentElement)
+  ctx.strokeStyle=getComputedStyle(document.documentElement)
                     .getPropertyValue('--line').trim() || 'red';
   ctx.lineWidth=Math.max(3, canvas.height/220);
   ctx.beginPath();
@@ -423,15 +413,13 @@ function handleFrame(jsonString){
   ctx.restore();
 
   if(!counting) return;
-
   const now=Date.now();
   const thresholdBase=Math.max(16, canvas.height/10);
 
   for(const tc of tcodes){
     const rawCode=tc.code;
-    const runnerID = mapCode(rawCode);
-    if(!runnerID) continue; // ignore unmapped codes
-
+    const runnerID=mapCode(rawCode);
+    if(!runnerID) continue;
     const cy=tc.y;
     const radius=tc.radius||20;
     if(Math.abs(cy-lineY) <= Math.max(thresholdBase, radius*0.9)){
@@ -440,17 +428,14 @@ function handleFrame(jsonString){
   }
 }
 
-
-/* ============================
-   8. BUTTON HANDLERS
-   ============================ */
+/* Button handlers */
 enableBtn.addEventListener('click', () => {
   try{
     TopCodes.startStopVideoScan('view');
     cameraEnabled=true;
     enableBtn.disabled=true;
     startBtn.disabled=false;
-    setStatus("Camera enabled. Codes are mapped automatically.");
+    setStatus("Camera enabled (rear preferred). Codes are mapped automatically.");
     TopCodes.setVideoFrameCallback('view', handleFrame);
   }catch(e){
     setStatus("Camera error: "+(e.message||e));
@@ -465,39 +450,31 @@ startBtn.addEventListener('click', () => {
   }
   runners.clear();
   tbody.innerHTML='';
-
   counting=true;
   startTimer();
   startRecording();
-
   startBtn.disabled=true;
   stopBtn.disabled=false;
   exportBtn.disabled=true;
-
   setStatus("Counting laps…");
 });
 
 stopBtn.addEventListener('click', () => {
   if(!counting) return;
-
   counting=false;
   stopTimer();
   stopRecording();
-
   for(const [id,r] of runners){
     if(!r.finished){
       const fin=document.getElementById('fin-'+id);
       if(fin) fin.textContent='DNF';
     }
   }
-
   startBtn.disabled=false;
   stopBtn.disabled=true;
   exportBtn.disabled=false;
-
   setStatus("Stopped. CSV ready.");
 });
-
 
 exportBtn.addEventListener('click', () => {
   if(!runners.size){
@@ -507,12 +484,10 @@ exportBtn.addEventListener('click', () => {
   for(const r of runners.values()){
     if(r.laps.length>maxLaps) maxLaps=r.laps.length;
   }
-
   const rows=[];
   const header=['Runner ID','Total Laps','Finish'];
   for(let i=1;i<=maxLaps;i++) header.push(`Lap ${i}`);
   rows.push(header);
-
   for(const [id,r] of runners){
     const total=r.laps.length;
     const finish= total? msToMMSS(r.laps[total-1]):'DNF';
@@ -522,7 +497,6 @@ exportBtn.addEventListener('click', () => {
     }
     rows.push(row);
   }
-
   const csv=rows.map(r=>r.join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
@@ -531,14 +505,10 @@ exportBtn.addEventListener('click', () => {
   a.download=`laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-
   setStatus("CSV exported.");
 });
 
-
-/* ============================
-   INITIAL
-   ============================ */
+/* Initial */
 setStatus("Idle. Tap Enable Camera.");
 
 })();
