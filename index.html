@@ -56,7 +56,7 @@
     touch-action:none;
   }
 
-  /* When mirrored (iOS visual fix) */
+  /* iOS mirror fix */
   #view.mirrored{
     transform: scaleX(-1);
     transform-origin: center center;
@@ -168,7 +168,8 @@
 <div class="app">
 
   <section class="top">
-    <canvas id="view" width="960" height="540"></canvas>
+    <!-- LOWER CANVAS RESOLUTION TO PREVENT LAG + BROKEN FEED -->
+    <canvas id="view" width="640" height="360"></canvas>
 
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
@@ -217,37 +218,20 @@
 </div>
 
 <!-- TopCodes library -->
-<script src="topcodes_patched.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
-/* === Camera monkey-patch: prefer rear camera (environment) === */
-(function forceEnvironmentCamera(){
-  // Patch modern getUserMedia
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+/*** FORCE REAR CAMERA ***/
+(function forceEnvCamera(){
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = function(constraints){
       constraints = constraints || {};
       if (constraints.video === true) constraints.video = {};
       if (typeof constraints.video === 'object' && !constraints.video.facingMode){
-        constraints.video.facingMode = { ideal: 'environment' };
+        constraints.video.facingMode = { ideal:'environment' };
       }
-      return origGUM(constraints);
-    };
-  }
-
-  // Patch legacy getUserMedia
-  const legacy = navigator.getUserMedia ||
-                 navigator.webkitGetUserMedia ||
-                 navigator.mozGetUserMedia;
-  if (legacy) {
-    const boundLegacy = legacy.bind(navigator);
-    navigator.getUserMedia = function(constraints, success, error){
-      constraints = constraints || {};
-      if (constraints.video === true) constraints.video = {};
-      if (typeof constraints.video === 'object' && !constraints.video.facingMode){
-        constraints.video.facingMode = { ideal: 'environment' };
-      }
-      return boundLegacy(constraints, success, error);
+      return gum(constraints);
     };
   }
 })();
@@ -256,27 +240,24 @@
 <script>
 (function(){
 
-/* iOS visual mirror fix: flip only what user sees, not detection */
+/*** iOS MIRROR FIX ***/
 const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
-if (isIOS) {
-  const c = document.getElementById('view');
-  if (c) c.classList.add('mirrored');
+if(isIOS){
+  document.getElementById('view').classList.add('mirrored');
 }
 
-/* 1. TopCode → Runner ID mapping */
-const TOPCODE_MAP = {
+/*** MAPPING (TopCode → Runner ID) ***/
+const MAP = {
   31:1, 47:2, 55:3, 59:4, 61:5,
   79:6, 87:7, 91:8, 93:9, 103:10,
   107:11, 109:12, 115:13, 117:14, 121:15,
   143:16, 151:17, 155:18, 157:19, 167:20
 };
-function mapCode(raw){
-  return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
-}
+function mappedID(raw){ return MAP[raw] || null; }
 
-/* 2. DOM */
+/*** DOM ***/
 const canvas   = document.getElementById('view');
-const ctx      = canvas.getContext('2d', { willReadFrequently:true });
+const ctx      = canvas.getContext('2d', {willReadFrequently:true});
 const statusEl = document.getElementById('status');
 const tbody    = document.getElementById('tbody');
 const timerEl  = document.getElementById('timer');
@@ -287,7 +268,7 @@ const exportBtn= document.getElementById('exportBtn');
 const lapsSel  = document.getElementById('lapsSel');
 const recToggle= document.getElementById('recToggle');
 
-/* Populate laps 1..20 */
+/*** Populate laps 1–20 ***/
 for(let i=1;i<=20;i++){
   const o=document.createElement('option');
   o.value=i; o.textContent=i;
@@ -295,130 +276,118 @@ for(let i=1;i<=20;i++){
   lapsSel.appendChild(o);
 }
 
-/* 3. State */
+/*** STATE ***/
 let cameraEnabled=false;
 let counting=false;
 let startTime=0;
 let timerHandle=null;
-const runners=new Map(); // runnerID -> {laps:[], lastCross, finished}
-const COOLDOWN=1200;
-let lineY = canvas.height*0.5;
-
-/* Recording */
 let recorder=null;
-let recordedChunks=[];
+let chunks=[];
+const runners=new Map();
+const COOLDOWN=1200;
 
-/* Helpers */
-function setStatus(msg){
-  statusEl.textContent=msg;
-  console.log(msg);
+/*** HELPERS ***/
+function setStatus(t){
+  statusEl.textContent=t;
+  console.log(t);
 }
-function msToMMSS(ms){
+function mmss(ms){
   const s=Math.floor(ms/1000);
-  const m=Math.floor(s/60);
-  const ss=s%60;
-  return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+  return String(Math.floor(s/60)).padStart(2,'0')+":"+
+         String(s%60).padStart(2,'0');
 }
+
+/*** RUNNER HANDLING ***/
 function ensureRunner(id){
   if(runners.has(id)) return;
-  runners.set(id,{laps:[],lastCross:0,finished:false});
+  runners.set(id,{laps:[],last:0,finished:false});
   const tr=document.createElement('tr');
   tr.id='r-'+id;
   tr.innerHTML=`
     <td>${id}</td>
     <td id="laps-${id}">0</td>
     <td id="fin-${id}">-</td>
-    <td id="splits-${id}">-</td>
-  `;
+    <td id="splits-${id}">-</td>`;
   tbody.appendChild(tr);
 }
-function updateRunnerRow(id){
+function updateRow(id){
   const r=runners.get(id);
   const laps=r.laps.length;
   document.getElementById('laps-'+id).textContent=laps;
-  document.getElementById('fin-'+id).textContent=
-    laps ? msToMMSS(r.laps[laps-1]) : '–';
-  document.getElementById('splits-'+id).textContent=
-    laps ? r.laps.map(msToMMSS).join(' | '):'–';
+  document.getElementById('fin-'+id).textContent =
+    laps ? mmss(r.laps[laps-1]) : '–';
+  document.getElementById('splits-'+id).textContent =
+    laps ? r.laps.map(mmss).join(' | ') : '–';
   if(r.finished){
     document.getElementById('r-'+id).classList.add('done');
   }
 }
-function countLapFor(id, now){
-  const reqLaps=parseInt(lapsSel.value,10);
+function countLap(id, now){
+  const req=parseInt(lapsSel.value,10);
   ensureRunner(id);
   const r=runners.get(id);
   if(r.finished) return;
-  if(now-r.lastCross<COOLDOWN) return;
+  if(now-r.last<COOLDOWN) return;
   r.laps.push(now-startTime);
-  r.lastCross=now;
-  if(r.laps.length>=reqLaps){
-    r.finished=true;
-  }
-  updateRunnerRow(id);
-  setStatus(`Runner ${id}: Lap ${r.laps.length}` + (r.finished? " (Finished)" : ""));
+  r.last=now;
+  if(r.laps.length>=req) r.finished=true;
+  updateRow(id);
 }
 
-/* Timer */
+/*** TIMER ***/
 function startTimer(){
   startTime=Date.now();
-  timerEl.textContent='00:00';
   timerHandle=setInterval(()=>{
-    timerEl.textContent=msToMMSS(Date.now()-startTime);
+    timerEl.textContent=mmss(Date.now()-startTime);
   },1000);
 }
 function stopTimer(){
-  if(timerHandle){ clearInterval(timerHandle); timerHandle=null; }
+  clearInterval(timerHandle);
+  timerHandle=null;
 }
 
-/* Recording */
-function startRecording(){
+/*** RECORDING ***/
+function startRec(){
   if(!recToggle.checked) return;
-  recordedChunks=[];
-  const stream = canvas.captureStream ? canvas.captureStream(30) : null;
-  if(!stream){
-    setStatus("Recording not supported.");
-    return;
-  }
+  chunks=[];
+  const stream=canvas.captureStream(30);
   try{
     recorder=new MediaRecorder(stream,{mimeType:'video/webm'});
   }catch(e){
     recorder=null; return;
   }
-  recorder.ondataavailable=e=>recordedChunks.push(e.data);
+  recorder.ondataavailable=e=>chunks.push(e.data);
   recorder.onstop=()=>{
-    if(!recordedChunks.length){
-      setStatus("No video recorded."); return;
-    }
-    const blob=new Blob(recordedChunks,{type:'video/webm'});
+    if(!chunks.length){ setStatus("No video"); return; }
+    const blob=new Blob(chunks,{type:'video/webm'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
-    a.download=`run_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
-    document.body.appendChild(a); a.click(); a.remove();
+    a.download='run_'+Date.now()+'.webm';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     URL.revokeObjectURL(url);
-    setStatus("Video saved.");
   };
   recorder.start();
 }
-function stopRecording(){
+function stopRec(){
   try{
     if(recorder && recorder.state!=='inactive') recorder.stop();
   }catch(e){}
 }
 
-/* TopCodes callback */
-function handleFrame(jsonString){
-  let data;
-  try{ data=JSON.parse(jsonString); }catch(e){ return; }
-  const tcodes=data.topcodes || [];
+/*** TOPCODES CALLBACK ***/
+function handleFrame(json){
+  let d;
+  try{ d=JSON.parse(json); }catch(e){ return; }
+  const arr=d.topcodes||[];
 
-  // Red line
-  lineY = canvas.height*0.5;
+  // draw red line
+  const lineY=Math.floor(canvas.height*0.5);
   ctx.save();
-  ctx.strokeStyle=getComputedStyle(document.documentElement)
-                    .getPropertyValue('--line').trim() || 'red';
-  ctx.lineWidth=Math.max(3, canvas.height/220);
+  ctx.strokeStyle='red';
+  ctx.lineWidth=Math.max(3,canvas.height/220);
   ctx.beginPath();
   ctx.moveTo(0,lineY);
   ctx.lineTo(canvas.width,lineY);
@@ -427,56 +396,50 @@ function handleFrame(jsonString){
 
   if(!counting) return;
   const now=Date.now();
-  const thresholdBase=Math.max(16, canvas.height/10);
+  const threshold = canvas.height/9;
 
-  for(const tc of tcodes){
-    const rawCode=tc.code;
-    const runnerID=mapCode(rawCode);
-    if(!runnerID) continue;
-    const cy=tc.y;
-    const radius=tc.radius||20;
-    if(Math.abs(cy-lineY) <= Math.max(thresholdBase, radius*0.9)){
-      countLapFor(runnerID, now);
+  for(const t of arr){
+    const mapped = mappedID(t.code);
+    if(!mapped) continue;
+    if(Math.abs(t.y - lineY) <= threshold){
+      countLap(mapped, now);
     }
   }
 }
 
-/* Button handlers */
-enableBtn.addEventListener('click', () => {
+/*** BUTTONS ***/
+enableBtn.addEventListener('click',()=>{
   try{
     TopCodes.startStopVideoScan('view');
+    TopCodes.setVideoFrameCallback('view', handleFrame);
     cameraEnabled=true;
     enableBtn.disabled=true;
     startBtn.disabled=false;
-    setStatus("Camera enabled (rear preferred). Codes are mapped automatically.");
-    TopCodes.setVideoFrameCallback('view', handleFrame);
+    setStatus("Camera enabled (rear). Ready.");
   }catch(e){
-    setStatus("Camera error: "+(e.message||e));
+    setStatus("Camera error: "+e);
     enableBtn.disabled=false;
   }
 });
 
-startBtn.addEventListener('click', () => {
-  if(!cameraEnabled){
-    setStatus("Enable camera first.");
-    return;
-  }
+startBtn.addEventListener('click',()=>{
+  if(!cameraEnabled) return setStatus("Enable camera first");
   runners.clear();
   tbody.innerHTML='';
   counting=true;
-  startTimer();
-  startRecording();
   startBtn.disabled=true;
   stopBtn.disabled=false;
   exportBtn.disabled=true;
-  setStatus("Counting laps…");
+  startTimer();
+  startRec();
+  setStatus("Counting…");
 });
 
-stopBtn.addEventListener('click', () => {
+stopBtn.addEventListener('click',()=>{
   if(!counting) return;
   counting=false;
   stopTimer();
-  stopRecording();
+  stopRec();
   for(const [id,r] of runners){
     if(!r.finished){
       const fin=document.getElementById('fin-'+id);
@@ -489,39 +452,38 @@ stopBtn.addEventListener('click', () => {
   setStatus("Stopped. CSV ready.");
 });
 
-exportBtn.addEventListener('click', () => {
-  if(!runners.size){
-    setStatus("No data."); return;
-  }
-  let maxLaps=0;
-  for(const r of runners.values()){
-    if(r.laps.length>maxLaps) maxLaps=r.laps.length;
-  }
-  const rows=[];
-  const header=['Runner ID','Total Laps','Finish'];
-  for(let i=1;i<=maxLaps;i++) header.push(`Lap ${i}`);
-  rows.push(header);
+/*** CSV EXPORT ***/
+exportBtn.addEventListener('click',()=>{
+  if(!runners.size) return setStatus("No data");
+  let maxL=0;
+  for(const r of runners.values()) if(r.laps.length>maxL) maxL=r.laps.length;
+
+  const rows=[['Runner ID','Total Laps','Finish',...Array.from({length:maxL},(_,i)=>`Lap ${i+1}`)]];
+
   for(const [id,r] of runners){
     const total=r.laps.length;
-    const finish= total? msToMMSS(r.laps[total-1]):'DNF';
+    const finish= total? mmss(r.laps[total-1]) : 'DNF';
     const row=[id,String(total),finish];
-    for(let i=0;i<maxLaps;i++){
-      row.push(r.laps[i]!=null? msToMMSS(r.laps[i]):'');
+    for(let i=0;i<maxL;i++){
+      row.push(r.laps[i] ? mmss(r.laps[i]) : '');
     }
     rows.push(row);
   }
+
   const csv=rows.map(r=>r.join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=`laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
+  a.download='laps_'+Date.now()+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   URL.revokeObjectURL(url);
   setStatus("CSV exported.");
 });
 
-/* Initial */
+/*** INIT ***/
 setStatus("Idle. Tap Enable Camera.");
 
 })();
