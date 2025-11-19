@@ -56,6 +56,12 @@
     touch-action:none;
   }
 
+  /* When mirrored (iOS visual fix) */
+  #view.mirrored{
+    transform: scaleX(-1);
+    transform-origin: center center;
+  }
+
   .controls{
     position:absolute;
     left:0; right:0; top:0;
@@ -229,7 +235,7 @@
     };
   }
 
-  // Patch legacy getUserMedia (if TopCodes uses it)
+  // Patch legacy getUserMedia
   const legacy = navigator.getUserMedia ||
                  navigator.webkitGetUserMedia ||
                  navigator.mozGetUserMedia;
@@ -249,6 +255,13 @@
 
 <script>
 (function(){
+
+/* iOS visual mirror fix: flip only what user sees, not detection */
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
+if (isIOS) {
+  const c = document.getElementById('view');
+  if (c) c.classList.add('mirrored');
+}
 
 /* 1. TopCode → Runner ID mapping */
 const TOPCODE_MAP = {
@@ -326,7 +339,7 @@ function updateRunnerRow(id){
   document.getElementById('fin-'+id).textContent=
     laps ? msToMMSS(r.laps[laps-1]) : '–';
   document.getElementById('splits-'+id).textContent=
-    laps ? r.laps.map(msToMMSS).join(' | ') : '–';
+    laps ? r.laps.map(msToMMSS).join(' | '):'–';
   if(r.finished){
     document.getElementById('r-'+id).classList.add('done');
   }
