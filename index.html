@@ -56,7 +56,7 @@
     touch-action:none;
   }
 
-  /* iOS mirror fix */
+  /* iOS visual mirror fix */
   #view.mirrored{
     transform: scaleX(-1);
     transform-origin: center center;
@@ -168,7 +168,7 @@
 <div class="app">
 
   <section class="top">
-    <!-- LOWER CANVAS RESOLUTION TO PREVENT LAG + BROKEN FEED -->
+    <!-- Lower-resolution internal canvas to avoid tearing/lag -->
     <canvas id="view" width="640" height="360"></canvas>
 
     <div class="controls">
@@ -217,274 +217,323 @@
 
 </div>
 
-<!-- TopCodes library -->
-<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
-
+<!-- Force rear camera on ALL getUserMedia APIs, before TopCodes loads -->
 <script>
-/*** FORCE REAR CAMERA ***/
-(function forceEnvCamera(){
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-    const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = function(constraints){
-      constraints = constraints || {};
-      if (constraints.video === true) constraints.video = {};
-      if (typeof constraints.video === 'object' && !constraints.video.facingMode){
-        constraints.video.facingMode = { ideal:'environment' };
-      }
-      return gum(constraints);
+(function() {
+  function forceRear(constraints) {
+    constraints = constraints || {};
+    if (constraints.video === true) constraints.video = {};
+    if (typeof constraints.video === "object") {
+      constraints.video.facingMode = { exact: "environment" };
+      constraints.video.width  = constraints.video.width  || { ideal: 1280 };
+      constraints.video.height = constraints.video.height || { ideal: 720 };
+    }
+    return constraints;
+  }
+
+  // Modern API
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function(c) {
+      return orig(forceRear(c));
+    };
+  }
+
+  // Legacy APIs
+  const legacy = navigator.getUserMedia;
+  if (legacy) {
+    navigator.getUserMedia = function(c, s, e) {
+      return legacy.call(navigator, forceRear(c), s, e);
+    };
+  }
+
+  const wk = navigator.webkitGetUserMedia;
+  if (wk) {
+    navigator.webkitGetUserMedia = function(c, s, e) {
+      return wk.call(navigator, forceRear(c), s, e);
+    };
+  }
+
+  const moz = navigator.mozGetUserMedia;
+  if (moz) {
+    navigator.mozGetUserMedia = function(c, s, e) {
+      return moz.call(navigator, forceRear(c), s, e);
     };
   }
 })();
 </script>
 
+<!-- TopCodes library -->
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
+
 <script>
 (function(){
 
-/*** iOS MIRROR FIX ***/
-const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
-if(isIOS){
-  document.getElementById('view').classList.add('mirrored');
-}
-
-/*** MAPPING (TopCode → Runner ID) ***/
-const MAP = {
-  31:1, 47:2, 55:3, 59:4, 61:5,
-  79:6, 87:7, 91:8, 93:9, 103:10,
-  107:11, 109:12, 115:13, 117:14, 121:15,
-  143:16, 151:17, 155:18, 157:19, 167:20
-};
-function mappedID(raw){ return MAP[raw] || null; }
-
-/*** DOM ***/
-const canvas   = document.getElementById('view');
-const ctx      = canvas.getContext('2d', {willReadFrequently:true});
-const statusEl = document.getElementById('status');
-const tbody    = document.getElementById('tbody');
-const timerEl  = document.getElementById('timer');
-const enableBtn= document.getElementById('enableBtn');
-const startBtn = document.getElementById('startBtn');
-const stopBtn  = document.getElementById('stopBtn');
-const exportBtn= document.getElementById('exportBtn');
-const lapsSel  = document.getElementById('lapsSel');
-const recToggle= document.getElementById('recToggle');
-
-/*** Populate laps 1–20 ***/
-for(let i=1;i<=20;i++){
-  const o=document.createElement('option');
-  o.value=i; o.textContent=i;
-  if(i===4) o.selected=true;
-  lapsSel.appendChild(o);
-}
-
-/*** STATE ***/
-let cameraEnabled=false;
-let counting=false;
-let startTime=0;
-let timerHandle=null;
-let recorder=null;
-let chunks=[];
-const runners=new Map();
-const COOLDOWN=1200;
-
-/*** HELPERS ***/
-function setStatus(t){
-  statusEl.textContent=t;
-  console.log(t);
-}
-function mmss(ms){
-  const s=Math.floor(ms/1000);
-  return String(Math.floor(s/60)).padStart(2,'0')+":"+
-         String(s%60).padStart(2,'0');
-}
-
-/*** RUNNER HANDLING ***/
-function ensureRunner(id){
-  if(runners.has(id)) return;
-  runners.set(id,{laps:[],last:0,finished:false});
-  const tr=document.createElement('tr');
-  tr.id='r-'+id;
-  tr.innerHTML=`
-    <td>${id}</td>
-    <td id="laps-${id}">0</td>
-    <td id="fin-${id}">-</td>
-    <td id="splits-${id}">-</td>`;
-  tbody.appendChild(tr);
-}
-function updateRow(id){
-  const r=runners.get(id);
-  const laps=r.laps.length;
-  document.getElementById('laps-'+id).textContent=laps;
-  document.getElementById('fin-'+id).textContent =
-    laps ? mmss(r.laps[laps-1]) : '–';
-  document.getElementById('splits-'+id).textContent =
-    laps ? r.laps.map(mmss).join(' | ') : '–';
-  if(r.finished){
-    document.getElementById('r-'+id).classList.add('done');
+  /* iOS mirror fix – only visual */
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
+  if (isIOS) {
+    document.getElementById('view').classList.add('mirrored');
   }
-}
-function countLap(id, now){
-  const req=parseInt(lapsSel.value,10);
-  ensureRunner(id);
-  const r=runners.get(id);
-  if(r.finished) return;
-  if(now-r.last<COOLDOWN) return;
-  r.laps.push(now-startTime);
-  r.last=now;
-  if(r.laps.length>=req) r.finished=true;
-  updateRow(id);
-}
 
-/*** TIMER ***/
-function startTimer(){
-  startTime=Date.now();
-  timerHandle=setInterval(()=>{
-    timerEl.textContent=mmss(Date.now()-startTime);
-  },1000);
-}
-function stopTimer(){
-  clearInterval(timerHandle);
-  timerHandle=null;
-}
-
-/*** RECORDING ***/
-function startRec(){
-  if(!recToggle.checked) return;
-  chunks=[];
-  const stream=canvas.captureStream(30);
-  try{
-    recorder=new MediaRecorder(stream,{mimeType:'video/webm'});
-  }catch(e){
-    recorder=null; return;
+  /* TopCode → Runner ID mapping */
+  const MAP = {
+    31:1, 47:2, 55:3, 59:4, 61:5,
+    79:6, 87:7, 91:8, 93:9, 103:10,
+    107:11, 109:12, 115:13, 117:14, 121:15,
+    143:16, 151:17, 155:18, 157:19, 167:20
+  };
+  function mappedID(raw) {
+    return MAP.hasOwnProperty(raw) ? MAP[raw] : null;
   }
-  recorder.ondataavailable=e=>chunks.push(e.data);
-  recorder.onstop=()=>{
-    if(!chunks.length){ setStatus("No video"); return; }
-    const blob=new Blob(chunks,{type:'video/webm'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
+
+  /* DOM references */
+  const canvas   = document.getElementById('view');
+  const ctx      = canvas.getContext('2d', { willReadFrequently:true });
+  const statusEl = document.getElementById('status');
+  const tbody    = document.getElementById('tbody');
+  const timerEl  = document.getElementById('timer');
+  const enableBtn= document.getElementById('enableBtn');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn  = document.getElementById('stopBtn');
+  const exportBtn= document.getElementById('exportBtn');
+  const lapsSel  = document.getElementById('lapsSel');
+  const recToggle= document.getElementById('recToggle');
+
+  /* Populate laps 1–20 */
+  for (let i=1;i<=20;i++){
+    const o=document.createElement('option');
+    o.value=i; o.textContent=i;
+    if(i===4) o.selected=true;
+    lapsSel.appendChild(o);
+  }
+
+  /* State */
+  let cameraEnabled=false;
+  let counting=false;
+  let startTime=0;
+  let timerHandle=null;
+  let recorder=null;
+  let chunks=[];
+  const runners=new Map(); // runnerID -> {laps:[], last:ms, finished:bool}
+  const COOLDOWN=1200;     // ms between lap counts per runner
+
+  function setStatus(msg){
+    statusEl.textContent=msg;
+    console.log(msg);
+  }
+
+  function msToMMSS(ms){
+    const s=Math.floor(ms/1000);
+    const m=Math.floor(s/60);
+    const ss=s%60;
+    return String(m).padStart(2,'0')+":"+String(ss).padStart(2,'0');
+  }
+
+  function ensureRunner(id){
+    if (runners.has(id)) return;
+    runners.set(id,{laps:[],last:0,finished:false});
+    const tr=document.createElement('tr');
+    tr.id='r-'+id;
+    tr.innerHTML=`
+      <td>${id}</td>
+      <td id="laps-${id}">0</td>
+      <td id="fin-${id}">-</td>
+      <td id="splits-${id}">-</td>`;
+    tbody.appendChild(tr);
+  }
+
+  function updateRow(id){
+    const r=runners.get(id);
+    const laps=r.laps.length;
+    document.getElementById('laps-'+id).textContent=laps;
+    document.getElementById('fin-'+id).textContent =
+      laps ? msToMMSS(r.laps[laps-1]) : '–';
+    document.getElementById('splits-'+id).textContent =
+      laps ? r.laps.map(msToMMSS).join(' | ') : '–';
+    if (r.finished) {
+      document.getElementById('r-'+id).classList.add('done');
+    }
+  }
+
+  function countLap(id, now){
+    const req=parseInt(lapsSel.value,10);
+    ensureRunner(id);
+    const r=runners.get(id);
+    if (r.finished) return;
+    if (now - r.last < COOLDOWN) return;
+    r.laps.push(now - startTime);
+    r.last = now;
+    if (r.laps.length >= req) r.finished = true;
+    updateRow(id);
+    setStatus(`Runner ${id}: Lap ${r.laps.length}` + (r.finished ? " (Finished)" : ""));
+  }
+
+  function startTimer(){
+    startTime=Date.now();
+    timerEl.textContent='00:00';
+    timerHandle = setInterval(()=>{
+      timerEl.textContent = msToMMSS(Date.now() - startTime);
+    },1000);
+  }
+  function stopTimer(){
+    if (timerHandle){ clearInterval(timerHandle); timerHandle=null; }
+  }
+
+  function startRecording(){
+    if (!recToggle.checked) return;
+    chunks=[];
+    const stream = canvas.captureStream ? canvas.captureStream(30) : null;
+    if (!stream){
+      setStatus("Recording not supported.");
+      return;
+    }
+    try{
+      recorder = new MediaRecorder(stream,{mimeType:'video/webm'});
+    }catch(e){
+      recorder=null; return;
+    }
+    recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      if (!chunks.length){ setStatus("No video recorded."); return; }
+      const blob = new Blob(chunks,{type:'video/webm'});
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href=url;
+      a.download='run_'+Date.now()+'.webm';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus("Video saved.");
+    };
+    recorder.start();
+  }
+
+  function stopRecording(){
+    try{
+      if (recorder && recorder.state!=='inactive') recorder.stop();
+    }catch(e){}
+  }
+
+  /* TopCodes frame callback */
+  function handleFrame(jsonString){
+    let data;
+    try{ data=JSON.parse(jsonString); }catch(e){ return; }
+    const arr = data.topcodes || [];
+
+    // Draw red start line
+    const lineY = Math.floor(canvas.height * 0.5);
+    ctx.save();
+    ctx.strokeStyle='red';
+    ctx.lineWidth=Math.max(3, canvas.height/220);
+    ctx.beginPath();
+    ctx.moveTo(0,lineY);
+    ctx.lineTo(canvas.width,lineY);
+    ctx.stroke();
+    ctx.restore();
+
+    if (!counting) return;
+    const now = Date.now();
+    const threshold = canvas.height / 9;
+
+    for (const t of arr){
+      const rid = mappedID(t.code);
+      if (!rid) continue;
+      if (Math.abs(t.y - lineY) <= threshold){
+        countLap(rid, now);
+      }
+    }
+  }
+
+  /* Buttons */
+  enableBtn.addEventListener('click', () => {
+    try{
+      TopCodes.startStopVideoScan('view');
+      TopCodes.setVideoFrameCallback('view', handleFrame);
+      cameraEnabled=true;
+      enableBtn.disabled=true;
+      startBtn.disabled=false;
+      setStatus("Camera enabled (rear preferred). Codes are mapped automatically.");
+    }catch(e){
+      console.error(e);
+      setStatus("Camera error: " + (e.message || e));
+      enableBtn.disabled=false;
+    }
+  });
+
+  startBtn.addEventListener('click', () => {
+    if (!cameraEnabled){
+      setStatus("Enable camera first.");
+      return;
+    }
+    runners.clear();
+    tbody.innerHTML='';
+    counting=true;
+    startBtn.disabled=true;
+    stopBtn.disabled=false;
+    exportBtn.disabled=true;
+    startTimer();
+    startRecording();
+    setStatus("Counting laps…");
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (!counting) return;
+    counting=false;
+    stopTimer();
+    stopRecording();
+    for (const [id,r] of runners){
+      if (!r.finished){
+        const fin=document.getElementById('fin-'+id);
+        if (fin) fin.textContent='DNF';
+      }
+    }
+    startBtn.disabled=false;
+    stopBtn.disabled=true;
+    exportBtn.disabled=false;
+    setStatus("Stopped. CSV ready.");
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (!runners.size){
+      setStatus("No data.");
+      return;
+    }
+    let maxL=0;
+    for (const r of runners.values()){
+      if (r.laps.length > maxL) maxL = r.laps.length;
+    }
+
+    const rows = [];
+    const header = ['Runner ID','Total Laps','Finish'];
+    for (let i=1;i<=maxL;i++) header.push(`Lap ${i}`);
+    rows.push(header);
+
+    for (const [id,r] of runners){
+      const total = r.laps.length;
+      const finish = total ? msToMMSS(r.laps[total-1]) : 'DNF';
+      const row = [id,String(total),finish];
+      for (let i=0;i<maxL;i++){
+        row.push(r.laps[i] != null ? msToMMSS(r.laps[i]) : '');
+      }
+      rows.push(row);
+    }
+
+    const csv = rows.map(r=>r.join(',')).join('\n');
+    const blob = new Blob([csv],{type:'text/csv'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href=url;
-    a.download='run_'+Date.now()+'.webm';
+    a.download='laps_'+Date.now()+'.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  };
-  recorder.start();
-}
-function stopRec(){
-  try{
-    if(recorder && recorder.state!=='inactive') recorder.stop();
-  }catch(e){}
-}
+    setStatus("CSV exported.");
+  });
 
-/*** TOPCODES CALLBACK ***/
-function handleFrame(json){
-  let d;
-  try{ d=JSON.parse(json); }catch(e){ return; }
-  const arr=d.topcodes||[];
-
-  // draw red line
-  const lineY=Math.floor(canvas.height*0.5);
-  ctx.save();
-  ctx.strokeStyle='red';
-  ctx.lineWidth=Math.max(3,canvas.height/220);
-  ctx.beginPath();
-  ctx.moveTo(0,lineY);
-  ctx.lineTo(canvas.width,lineY);
-  ctx.stroke();
-  ctx.restore();
-
-  if(!counting) return;
-  const now=Date.now();
-  const threshold = canvas.height/9;
-
-  for(const t of arr){
-    const mapped = mappedID(t.code);
-    if(!mapped) continue;
-    if(Math.abs(t.y - lineY) <= threshold){
-      countLap(mapped, now);
-    }
-  }
-}
-
-/*** BUTTONS ***/
-enableBtn.addEventListener('click',()=>{
-  try{
-    TopCodes.startStopVideoScan('view');
-    TopCodes.setVideoFrameCallback('view', handleFrame);
-    cameraEnabled=true;
-    enableBtn.disabled=true;
-    startBtn.disabled=false;
-    setStatus("Camera enabled (rear). Ready.");
-  }catch(e){
-    setStatus("Camera error: "+e);
-    enableBtn.disabled=false;
-  }
-});
-
-startBtn.addEventListener('click',()=>{
-  if(!cameraEnabled) return setStatus("Enable camera first");
-  runners.clear();
-  tbody.innerHTML='';
-  counting=true;
-  startBtn.disabled=true;
-  stopBtn.disabled=false;
-  exportBtn.disabled=true;
-  startTimer();
-  startRec();
-  setStatus("Counting…");
-});
-
-stopBtn.addEventListener('click',()=>{
-  if(!counting) return;
-  counting=false;
-  stopTimer();
-  stopRec();
-  for(const [id,r] of runners){
-    if(!r.finished){
-      const fin=document.getElementById('fin-'+id);
-      if(fin) fin.textContent='DNF';
-    }
-  }
-  startBtn.disabled=false;
-  stopBtn.disabled=true;
-  exportBtn.disabled=false;
-  setStatus("Stopped. CSV ready.");
-});
-
-/*** CSV EXPORT ***/
-exportBtn.addEventListener('click',()=>{
-  if(!runners.size) return setStatus("No data");
-  let maxL=0;
-  for(const r of runners.values()) if(r.laps.length>maxL) maxL=r.laps.length;
-
-  const rows=[['Runner ID','Total Laps','Finish',...Array.from({length:maxL},(_,i)=>`Lap ${i+1}`)]];
-
-  for(const [id,r] of runners){
-    const total=r.laps.length;
-    const finish= total? mmss(r.laps[total-1]) : 'DNF';
-    const row=[id,String(total),finish];
-    for(let i=0;i<maxL;i++){
-      row.push(r.laps[i] ? mmss(r.laps[i]) : '');
-    }
-    rows.push(row);
-  }
-
-  const csv=rows.map(r=>r.join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download='laps_'+Date.now()+'.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  setStatus("CSV exported.");
-});
-
-/*** INIT ***/
-setStatus("Idle. Tap Enable Camera.");
+  /* Initial status */
+  setStatus("Idle. Tap “Enable Camera”.");
 
 })();
 </script>
