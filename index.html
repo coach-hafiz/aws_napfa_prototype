@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>TopCodes Lap Counter — Fast Landscape Version</title>
+<title>TopCodes Lap Counter — Landscape</title>
 
 <style>
   :root {
@@ -35,9 +35,9 @@
     padding:20px;
   }
 
-  /* LANDSCAPE LAYOUT */
+  /* LANDSCAPE APP LAYOUT */
   #app {
-    display:none; /* Shown only in landscape */
+    display:none; /* shown only in landscape */
     width:100vw;
     height:100vh;
     overflow:hidden;
@@ -50,6 +50,7 @@
     height:100vh;
     background:#000;
   }
+
   #view {
     width:100%;
     height:100%;
@@ -71,6 +72,7 @@
     display:flex;
     gap:8px;
     flex-wrap:wrap;
+    align-items:center;
     margin-bottom:10px;
   }
   button {
@@ -81,9 +83,10 @@
     border-radius:8px;
     font-weight:700;
     font-size:14px;
+    cursor:pointer;
   }
   button.secondary { background:#666 }
-  button:disabled { opacity:0.4 }
+  button:disabled { opacity:0.4; cursor:default; }
 
   select {
     height:38px;
@@ -91,6 +94,7 @@
     border:1px solid #ccc;
     border-radius:8px;
     font-weight:600;
+    font-size:13px;
   }
 
   .timer {
@@ -135,12 +139,57 @@
     text-align:center;
   }
   tr.done { background:#e0f7e0; }
+
+  .label {
+    font-size:13px;
+    margin-left:4px;
+  }
+
+  /* Responsive tweaks: phones / small tablets in landscape */
+  @media (max-width: 900px) {
+    .controls {
+      gap:6px;
+    }
+    button {
+      font-size:12px;
+      padding:8px 10px;
+    }
+    select {
+      height:34px;
+      font-size:12px;
+    }
+    .timer {
+      font-size:16px;
+      min-width:72px;
+    }
+    #status {
+      font-size:12px;
+    }
+    th, td {
+      font-size:12px;
+      padding:5px;
+    }
+  }
+
+  /* Larger tablets / desktops */
+  @media (min-width: 1280px) {
+    button {
+      font-size:15px;
+      padding:10px 16px;
+    }
+    select {
+      font-size:14px;
+    }
+    .timer {
+      font-size:20px;
+    }
+  }
 </style>
 </head>
 
 <body>
 
-<div id="rotateNotice">Please rotate your device to LANDSCAPE to begin.</div>
+<div id="rotateNotice">Please rotate your device to <strong>LANDSCAPE</strong> to begin.</div>
 
 <div id="app">
   <div id="leftCam">
@@ -156,8 +205,14 @@
       <button id="stopBtn"  class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
 
-      <label style="margin-left:6px">Laps</label>
+      <span class="label">Laps</span>
       <select id="lapsSel"></select>
+
+      <span class="label">Camera</span>
+      <select id="camSel">
+        <option value="environment" selected>Rear</option>
+        <option value="user">Front</option>
+      </select>
 
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
     </div>
@@ -181,40 +236,56 @@
   </div>
 </div>
 
-<!-- Force rear camera on ALL APIs BEFORE TopCodes loads -->
+<!-- Global camera patch: respect selected front/rear on all getUserMedia calls -->
 <script>
 (function(){
-  function forceRear(c){
-    c = c || {};
-    if (c.video === true) c.video = {};
-    if (typeof c.video === "object"){
-      c.video.facingMode = { exact:"environment" };
-      c.video.width  = { ideal:640 };
-      c.video.height = { ideal:360 };
+  // default to rear
+  window._desiredFacing = "environment";
+
+  function applyFacing(constraints){
+    constraints = constraints || {};
+    if (constraints.video === true) constraints.video = {};
+    if (typeof constraints.video === "object"){
+      const facing = window._desiredFacing || "environment";
+      constraints.video.facingMode = { ideal:facing };
+      // modest resolution to keep things light
+      constraints.video.width  = constraints.video.width  || { ideal: 640 };
+      constraints.video.height = constraints.video.height || { ideal: 360 };
     }
-    return c;
+    return constraints;
   }
 
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
     const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = c => orig(forceRear(c));
+    navigator.mediaDevices.getUserMedia = function(c){
+      return orig(applyFacing(c));
+    };
   }
 
   const legacy = navigator.getUserMedia;
   if (legacy){
-    navigator.getUserMedia = (c,s,e) =>
-      legacy.call(navigator, forceRear(c),s,e);
+    navigator.getUserMedia = function(c,s,e){
+      return legacy.call(navigator, applyFacing(c), s, e);
+    };
   }
 
   const wk = navigator.webkitGetUserMedia;
   if (wk){
-    navigator.webkitGetUserMedia = (c,s,e) =>
-      wk.call(navigator, forceRear(c),s,e);
+    navigator.webkitGetUserMedia = function(c,s,e){
+      return wk.call(navigator, applyFacing(c), s, e);
+    };
+  }
+
+  const moz = navigator.mozGetUserMedia;
+  if (moz){
+    navigator.mozGetUserMedia = function(c,s,e){
+      return moz.call(navigator, applyFacing(c), s, e);
+    };
   }
 })();
 </script>
 
-<!-- TopCodes -->
+<!-- TopCodes library -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
@@ -230,28 +301,29 @@ window.addEventListener("orientationchange", checkOrientation);
 window.addEventListener("resize", checkOrientation);
 checkOrientation();
 
-/* MAPPING */
+/* TopCode → Runner ID mapping */
 const MAP = {
   31:1,47:2,55:3,59:4,61:5,
   79:6,87:7,91:8,93:9,103:10,
   107:11,109:12,115:13,117:14,121:15,
   143:16,151:17,155:18,157:19,167:20
 };
-function mapID(raw){ return MAP[raw] || null; }
+function mapID(raw){ return MAP.hasOwnProperty(raw) ? MAP[raw] : null; }
 
 /* DOM */
-const canvas=document.getElementById("view");
-const ctx=canvas.getContext("2d",{ willReadFrequently:true });
-const statusEl=document.getElementById("status");
-const tbody=document.getElementById("tbody");
-const timerEl=document.getElementById("timer");
-const enableBtn=document.getElementById("enableBtn");
-const startBtn=document.getElementById("startBtn");
-const stopBtn=document.getElementById("stopBtn");
-const exportBtn=document.getElementById("exportBtn");
-const lapsSel=document.getElementById("lapsSel");
+const canvas   = document.getElementById("view");
+const ctx      = canvas.getContext("2d",{ willReadFrequently:true });
+const statusEl = document.getElementById("status");
+const tbody    = document.getElementById("tbody");
+const timerEl  = document.getElementById("timer");
+const enableBtn= document.getElementById("enableBtn");
+const startBtn = document.getElementById("startBtn");
+const stopBtn  = document.getElementById("stopBtn");
+const exportBtn= document.getElementById("exportBtn");
+const lapsSel  = document.getElementById("lapsSel");
+const camSel   = document.getElementById("camSel");
 
-/* Populate laps */
+/* Populate laps 1–20 */
 for(let i=1;i<=20;i++){
   const o=document.createElement("option");
   o.value=i; o.textContent=i;
@@ -270,7 +342,10 @@ const runners=new Map();
 const COOLDOWN=1200;
 
 /* Helpers */
-function setStatus(t){ statusEl.textContent=t; }
+function setStatus(msg){
+  statusEl.textContent = msg;
+  console.log(msg);
+}
 
 function mmss(ms){
   const s=Math.floor(ms/1000);
@@ -281,7 +356,6 @@ function mmss(ms){
 function ensureRunner(id){
   if(runners.has(id)) return;
   runners.set(id,{laps:[],last:0,finished:false});
-
   const tr=document.createElement("tr");
   tr.id="r-"+id;
   tr.innerHTML=`
@@ -297,9 +371,9 @@ function updateRow(id){
   const laps=r.laps.length;
   document.getElementById("laps-"+id).textContent=laps;
   document.getElementById("fin-"+id).textContent =
-    laps? mmss(r.laps[laps-1]):"–";
+    laps ? mmss(r.laps[laps-1]) : "–";
   document.getElementById("splits-"+id).textContent =
-    laps? r.laps.map(mmss).join(" | "):"–";
+    laps ? r.laps.map(mmss).join(" | ") : "–";
   if(r.finished) document.getElementById("r-"+id).classList.add("done");
 }
 
@@ -315,7 +389,7 @@ function stopTimer(){
   timerHandle=null;
 }
 
-/* Recording */
+/* Recording (optional, low resolution) */
 function startRecording(){
   chunks=[];
   const stream = canvas.captureStream ? canvas.captureStream(20) : null;
@@ -325,14 +399,17 @@ function startRecording(){
   }catch(e){
     recorder=null; return;
   }
-  recorder.ondataavailable=e=>chunks.push(e.data);
-  recorder.onstop=()=>{
+  recorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
     if(!chunks.length) return;
     const blob=new Blob(chunks,{type:"video/webm"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    a.href=url; a.download="run_"+Date.now()+".webm";
-    document.body.appendChild(a); a.click(); a.remove();
+    a.href=url;
+    a.download="run_"+Date.now()+".webm";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   };
   recorder.start();
@@ -343,20 +420,19 @@ function stopRecording(){
   }catch(e){}
 }
 
-/* TopCodes callback */
+/* TopCodes frame callback */
 let frameSkip=0;
 function handleFrame(json){
-  // throttle detection for speed
   frameSkip++;
-  if(frameSkip % 2 !== 0) return;
+  if(frameSkip % 2 !== 0) return; // throttle for speed
 
   let data;
   try{ data=JSON.parse(json); }catch(e){ return; }
 
-  const codes=data.topcodes||[];
+  const codes=data.topcodes || [];
   const lineY = Math.floor(canvas.height*0.5);
 
-  // draw red line
+  // Draw red line
   ctx.save();
   ctx.strokeStyle="red";
   ctx.lineWidth=3;
@@ -368,11 +444,11 @@ function handleFrame(json){
 
   if(!counting) return;
 
-  const now = Date.now();
+  const now=Date.now();
   const threshold = canvas.height/7;
 
   for(const tc of codes){
-    const id = mapID(tc.code);
+    const id=mapID(tc.code);
     if(!id) continue;
     if(Math.abs(tc.y - lineY) <= threshold){
       ensureRunner(id);
@@ -389,17 +465,28 @@ function handleFrame(json){
   }
 }
 
+/* Camera selector: update global facing preference.
+   User must re-tap "Enable Camera" after changing. */
+camSel.addEventListener("change", () => {
+  window._desiredFacing = camSel.value;  // "user" or "environment"
+  setStatus("Camera preference set to: " + camSel.value +
+            ". Tap 'Enable Camera' to apply.");
+});
+
 /* Buttons */
 enableBtn.addEventListener("click",()=>{
   try{
+    // Start TopCodes scanning on the canvas; our getUserMedia patch will handle facing
     TopCodes.startStopVideoScan("view");
     TopCodes.setVideoFrameCallback("view", handleFrame);
     cameraEnabled=true;
     enableBtn.disabled=true;
     startBtn.disabled=false;
-    setStatus("Camera enabled.");
+    setStatus("Camera enabled ("+camSel.value+").");
   }catch(e){
-    setStatus("Camera error: "+e);
+    console.error(e);
+    setStatus("Camera error: "+(e.message||e));
+    enableBtn.disabled=false;
   }
 });
 
@@ -420,12 +507,14 @@ startBtn.addEventListener("click",()=>{
 });
 
 stopBtn.addEventListener("click",()=>{
+  if(!counting) return;
   counting=false;
   stopTimer();
   stopRecording();
   for(const [id,r] of runners){
     if(!r.finished){
-      document.getElementById("fin-"+id).textContent = "DNF";
+      const fin=document.getElementById("fin-"+id);
+      if(fin) fin.textContent="DNF";
     }
   }
   startBtn.disabled=false;
@@ -436,7 +525,7 @@ stopBtn.addEventListener("click",()=>{
 
 exportBtn.addEventListener("click",()=>{
   if(!runners.size){
-    setStatus("No data.");
+    setStatus("No data to export.");
     return;
   }
 
@@ -451,9 +540,9 @@ exportBtn.addEventListener("click",()=>{
   rows.push(header);
 
   for(const [id,r] of runners){
-    const tot=r.laps.length;
-    const fin= tot? mmss(r.laps[tot-1]):"DNF";
-    const row=[id,String(tot),fin];
+    const total=r.laps.length;
+    const finish= total? mmss(r.laps[total-1]):"DNF";
+    const row=[id,String(total),finish];
     for(let i=0;i<maxL;i++){
       row.push(r.laps[i]? mmss(r.laps[i]):"");
     }
@@ -472,6 +561,9 @@ exportBtn.addEventListener("click",()=>{
   URL.revokeObjectURL(url);
   setStatus("CSV exported.");
 });
+
+/* Initial status */
+setStatus("Waiting. Choose camera, then tap 'Enable Camera'.");
 
 })();
 </script>
