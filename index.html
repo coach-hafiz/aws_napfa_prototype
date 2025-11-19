@@ -248,7 +248,6 @@
     if (typeof constraints.video === "object"){
       const facing = window._desiredFacing || "environment";
       constraints.video.facingMode = { ideal:facing };
-      // modest resolution to keep things light
       constraints.video.width  = constraints.video.width  || { ideal: 640 };
       constraints.video.height = constraints.video.height || { ideal: 360 };
     }
@@ -301,6 +300,9 @@ window.addEventListener("orientationchange", checkOrientation);
 window.addEventListener("resize", checkOrientation);
 checkOrientation();
 
+/* iOS detection (for disabling video recording) */
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
+
 /* TopCode → Runner ID mapping */
 const MAP = {
   31:1,47:2,55:3,59:4,61:5,
@@ -336,7 +338,7 @@ let cameraEnabled=false;
 let counting=false;
 let startTime=0;
 let timerHandle=null;
-let recorder=null;
+let recorder=null;   // used only on non-iOS
 let chunks=[];
 const runners=new Map();
 const COOLDOWN=1200;
@@ -389,8 +391,9 @@ function stopTimer(){
   timerHandle=null;
 }
 
-/* Recording (optional, low resolution) */
+/* Recording (disabled on iOS to avoid WebKit blob errors) */
 function startRecording(){
+  if(isIOS) return; // skip recording on iOS
   chunks=[];
   const stream = canvas.captureStream ? canvas.captureStream(20) : null;
   if(!stream){ return; }
@@ -415,6 +418,7 @@ function startRecording(){
   recorder.start();
 }
 function stopRecording(){
+  if(isIOS) return;
   try{
     if(recorder && recorder.state!=="inactive") recorder.stop();
   }catch(e){}
@@ -434,6 +438,7 @@ function handleFrame(json){
 
   // Draw red line
   ctx.save();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.strokeStyle="red";
   ctx.lineWidth=3;
   ctx.beginPath();
@@ -476,7 +481,6 @@ camSel.addEventListener("change", () => {
 /* Buttons */
 enableBtn.addEventListener("click",()=>{
   try{
-    // Start TopCodes scanning on the canvas; our getUserMedia patch will handle facing
     TopCodes.startStopVideoScan("view");
     TopCodes.setVideoFrameCallback("view", handleFrame);
     cameraEnabled=true;
@@ -523,6 +527,7 @@ stopBtn.addEventListener("click",()=>{
   setStatus("Stopped.");
 });
 
+/* CSV EXPORT – use DATA URL (no Blob) to avoid WebKitBlobResource error */
 exportBtn.addEventListener("click",()=>{
   if(!runners.size){
     setStatus("No data to export.");
@@ -550,15 +555,16 @@ exportBtn.addEventListener("click",()=>{
   }
 
   const csv=rows.map(r=>r.join(",")).join("\n");
-  const blob=new Blob([csv],{type:"text/csv"});
-  const url=URL.createObjectURL(blob);
+  const encoded = encodeURIComponent(csv);
+  const href = "data:text/csv;charset=utf-8," + encoded;
+
   const a=document.createElement("a");
-  a.href=url;
+  a.href=href;
   a.download="laps_"+Date.now()+".csv";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+
   setStatus("CSV exported.");
 });
 
