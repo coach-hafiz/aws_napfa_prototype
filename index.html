@@ -42,6 +42,7 @@
     height:100vh;
     overflow:hidden;
     background:#000;
+    display:flex;
   }
 
   #leftCam {
@@ -49,11 +50,16 @@
     width:55vw;
     height:100vh;
     background:#000;
+    display:flex;
+    align-items:center;
+    justify-content:center;
   }
 
+  /* Keep aspect ratio, avoid stretching and zoomy feel */
   #view {
     width:100%;
-    height:100%;
+    height:auto;
+    max-height:100vh;
     display:block;
     background:#000;
   }
@@ -193,8 +199,8 @@
 
 <div id="app">
   <div id="leftCam">
-    <!-- LOW INTERNAL RESOLUTION FOR SPEED -->
-    <canvas id="view" width="320" height="180"></canvas>
+    <!-- 16:9 internal resolution for better aspect; still light -->
+    <canvas id="view" width="640" height="360"></canvas>
   </div>
 
   <div id="rightUI">
@@ -436,9 +442,9 @@ function handleFrame(json){
   const codes=data.topcodes || [];
   const lineY = Math.floor(canvas.height*0.5);
 
-  // Draw red line
+  // DO NOT clear the whole canvas, to avoid flickering the video.
+  // Just draw the line on top.
   ctx.save();
-  ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.strokeStyle="red";
   ctx.lineWidth=3;
   ctx.beginPath();
@@ -527,7 +533,7 @@ stopBtn.addEventListener("click",()=>{
   setStatus("Stopped.");
 });
 
-/* CSV EXPORT – use DATA URL (no Blob) to avoid WebKitBlobResource error */
+/* CSV EXPORT – data URL (no Blob) */
 exportBtn.addEventListener("click",()=>{
   if(!runners.size){
     setStatus("No data to export.");
