@@ -74,6 +74,7 @@ button{
   padding:10px 12px;
 }
 button.secondary{ background:#666 }
+button:disabled{ opacity:0.5 }
 select{
   height:42px;
   padding:0 10px;
@@ -168,7 +169,7 @@ tr.done{ background:#e9f6ec }
 
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#333">
         <input id="dummyDebug" type="checkbox" disabled />
-        Debug video (not needed in this version)
+        Debug video (not used in this version)
       </label>
     </div>
   </section>
@@ -376,13 +377,8 @@ tr.done{ background:#e9f6ec }
   // Buttons
   enableBtn.addEventListener('click', () => {
     try{
-      TopCodes.startStopVideoScan('view', {
-        video: {
-          facingMode: { ideal: 'environment' },
-          width:  { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      });
+      // KEY FIX: only pass the canvas ID; no config object
+      TopCodes.startStopVideoScan('view');
       TopCodes.setVideoFrameCallback('view', handleFrame);
 
       enableBtn.disabled = true;
@@ -449,9 +445,9 @@ tr.done{ background:#e9f6ec }
     rows.push(header);
 
     for (const [id, r] of runners.entries()){
-      const total = r.laps.length;
+      const total  = r.laps.length;
       const finish = total ? msToMMSS(r.laps[total-1]) : 'DNF';
-      const row = [id, String(total), finish];
+      const row    = [id, String(total), finish];
       for (let i=0;i<maxLaps;i++){
         row.push(r.laps[i] != null ? msToMMSS(r.laps[i]) : '');
       }
@@ -465,12 +461,11 @@ tr.done{ background:#e9f6ec }
       }).join(',')
     ).join('\n');
 
-    // Use data URL to avoid Safari blob issues
     const encoded = encodeURIComponent(csv);
-    const href = 'data:text/csv;charset=utf-8,' + encoded;
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = `topcodes_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+    const href    = 'data:text/csv;charset=utf-8,' + encoded;
+    const a       = document.createElement('a');
+    a.href        = href;
+    a.download    = `topcodes_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
