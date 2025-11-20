@@ -22,10 +22,10 @@ body{
 /* App grid switches by orientation */
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: top quarter (25vh) for video+controls; bottom for table */
+/* Portrait: increase video height to maximise camera view */
 @media (orientation:portrait){
   .app{
-    grid-template-rows: 25vh 1fr;
+    grid-template-rows: 45vh 1fr; /* larger video area */
     grid-template-columns: 1fr;
     grid-template-areas:
       "top"
@@ -63,21 +63,33 @@ body{
   touch-action:none;
 }
 
-/* Controls overlay: always visible */
+/* Controls overlay: column with 2 rows (buttons row + laps/distance row) */
 .controls{
   position:absolute;
   left:0; right:0; top:0;
   z-index:20;
-  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
   padding:8px;
   background:linear-gradient(
     180deg,
     rgba(255,255,255,0.95) 0%,
-    rgba(255,255,255,0.80) 90%,
+    rgba(255,255,255,0.80) 80%,
     rgba(255,255,255,0) 100%
   );
   border-bottom:1px solid rgba(0,0,0,0.06);
 }
+
+/* rows inside controls */
+.controls-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  width:100%;
+}
+
 button{
   background:var(--accent);
   color:#fff;
@@ -173,27 +185,35 @@ tr.done{ background:#e9f6ec }
     <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
 
     <div class="controls">
-      <button id="enableBtn">Enable Camera</button>
-      <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
-      <button id="startBtn" class="secondary" disabled>Start</button>
-      <button id="stopBtn"  class="secondary" disabled>Stop</button>
-      <div class="timer" id="timer">00:00</div>
+      <!-- Row 1: camera + timer + export/summary -->
+      <div class="controls-row">
+        <button id="enableBtn">Enable Camera</button>
+        <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
+        <button id="startBtn" class="secondary" disabled>Start</button>
+        <button id="stopBtn"  class="secondary" disabled>Stop</button>
+        <div class="timer" id="timer">00:00</div>
 
-      <label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>
-      <select id="lapsSel" aria-label="Number of laps"></select>
+        <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+        <button id="summaryBtn" class="secondary" disabled>Detailed Summary</button>
 
-      <label for="distanceInput" style="margin-left:6px;font-size:12px;color:#333">Run Distance (m)</label>
-      <input id="distanceInput" type="number" min="100" step="10" value="1600"
-             aria-label="Total run distance in metres" />
+        <span class="spacer"></span>
 
-      <button id="exportBtn" class="secondary" disabled>Export CSV</button>
-      <button id="summaryBtn" class="secondary" disabled>Detailed Summary</button>
+        <span style="font-size:11px;color:#555">
+          Aim TopCodes so they cross the red line.
+        </span>
+      </div>
 
-      <span class="spacer"></span>
+      <!-- Row 2: laps + distance + per-lap info on their own line -->
+      <div class="controls-row">
+        <label for="lapsSel" style="font-size:12px;color:#333">Laps</label>
+        <select id="lapsSel" aria-label="Number of laps"></select>
 
-      <span style="font-size:11px;color:#555">
-        Aim TopCodes so they cross the red line.
-      </span>
+        <label for="distanceInput" style="font-size:12px;color:#333">Run Distance (m)</label>
+        <input id="distanceInput" type="number" min="100" step="10" value="1600"
+               aria-label="Total run distance in metres" />
+
+        <span id="lapInfo" style="font-size:12px;color:#333;"></span>
+      </div>
     </div>
   </section>
 
@@ -237,6 +257,7 @@ tr.done{ background:#e9f6ec }
   var summaryBtn= document.getElementById('summaryBtn');
   var lapsSel  = document.getElementById('lapsSel');
   var distanceInput = document.getElementById('distanceInput');
+  var lapInfoEl = document.getElementById('lapInfo');
 
   var cameraActive = false;
   var cameraStream = null;
@@ -254,6 +275,17 @@ tr.done{ background:#e9f6ec }
     lapsSel.appendChild(opt);
   }
 
+  function updateLapInfo(){
+    var laps = parseInt(lapsSel.value,10) || 0;
+    if (!laps || !runDistanceMeters){
+      lapInfoEl.textContent = '';
+      return;
+    }
+    var per = runDistanceMeters / laps;
+    var perStr = Number.isInteger(per) ? per.toString() : per.toFixed(1);
+    lapInfoEl.textContent = '≈ ' + perStr + ' m per lap';
+  }
+
   distanceInput.addEventListener('change', function(){
     var v = parseFloat(distanceInput.value);
     if (!isFinite(v) || v <= 0){
@@ -262,6 +294,11 @@ tr.done{ background:#e9f6ec }
     }
     runDistanceMeters = v;
     setStatus('Run distance set to ' + runDistanceMeters + ' m.');
+    updateLapInfo();
+  });
+
+  lapsSel.addEventListener('change', function(){
+    updateLapInfo();
   });
 
   // TopCode -> Runner ID mapping (A)
@@ -666,17 +703,17 @@ tr.done{ background:#e9f6ec }
       var finishMs = lapsDone ? rr.laps[lapsDone-1] : NaN;
       var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
 
-      var totalDist = (totalRunMeters); // total planned run distance
-      var paceStr = '';
+      var totalDist = totalRunMeters; // planned distance
+      var paceStrVal = '';
       if (lapsDone){
         var totalSec = finishMs/1000;
         var paceSecPerKm = totalSec / (totalDist/1000);
         var paceMin = Math.floor(paceSecPerKm / 60);
         var paceSec = Math.round(paceSecPerKm % 60);
-        paceStr = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
+        paceStrVal = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
       }
 
-      var row    = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStr];
+      var row    = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
       for (j=0;j<maxLaps;j++){
         row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
       }
@@ -741,7 +778,7 @@ tr.done{ background:#e9f6ec }
     }
     try{
       localStorage.setItem('topcodesLapSummaryV1', JSON.stringify(data));
-      window.location.href = 'detailedsummary.html';
+      window.open('detailedsummary.html', '_blank');
     }catch(e){
       console.error(e);
       setStatus('Unable to save summary data. Check storage settings.');
@@ -758,6 +795,7 @@ tr.done{ background:#e9f6ec }
 
   // Initial setup
   resizeCanvas();
+  updateLapInfo();
   setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR / barcodes). Note: Camera requires HTTPS or localhost.');
 })();
 </script>
