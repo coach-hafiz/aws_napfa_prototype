@@ -461,20 +461,48 @@ tr.done{ background:#e9f6ec }
       // Resize canvas before starting camera
       resizeCanvas();
       
-      // TopCodes handles getUserMedia internally
-      // Just pass the canvas ID - it will request camera permissions
-      TopCodes.startStopVideoScan('view');
+      // Request rear camera for mobile devices
+      var constraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
       
-      // Set up the frame callback
-      TopCodes.setVideoFrameCallback('view', handleFrame);
-
-      cameraActive = true;
-      enableBtn.disabled = true;
-      startBtn.disabled  = false;
-      stopBtn.disabled   = true;
-      exportBtn.disabled = true;
-
-      setStatus('Camera ready. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+      // Use getUserMedia with rear camera constraints
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(stream){
+          // Get video element that TopCodes will use
+          var video = document.createElement('video');
+          video.id = 'topcodes-video-view';
+          video.srcObject = stream;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.style.display = 'none';
+          document.body.appendChild(video);
+          
+          // Initialize TopCodes scanner with our video stream
+          video.addEventListener('loadedmetadata', function(){
+            TopCodes.startStopVideoScan('view');
+            TopCodes.setVideoFrameCallback('view', handleFrame);
+            
+            cameraActive = true;
+            enableBtn.disabled = true;
+            startBtn.disabled  = false;
+            stopBtn.disabled   = true;
+            exportBtn.disabled = true;
+            
+            setStatus('Rear camera ready. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+          });
+        })
+        .catch(function(err){
+          console.error('Camera error:', err);
+          setStatus('Camera error: ' + err.message + '. Make sure camera permissions are granted.');
+          enableBtn.disabled = false;
+          cameraActive = false;
+        });
+      
     }catch(e){
       console.error(e);
       setStatus('Camera error: ' + (e.message || e));
