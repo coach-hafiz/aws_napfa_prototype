@@ -10,18 +10,356 @@
   --bg:#f7f7f7;
   --line:red;
 }
-/* ...CSS omitted for brevity, unchanged... */
+*{ box-sizing:border-box }
+body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }
+.app{ display:grid; min-height:100vh; }
+@media (orientation:portrait){
+  .app{
+    grid-template-rows: 25vh 1fr;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "top"
+      "bottom";
+  }
+  .top{ grid-area: top; }
+  .bottom{ grid-area: bottom; }
+}
+@media (orientation:landscape){
+  .app{
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 100vh;
+    grid-template-areas:
+      "left right";
+  }
+  .top{ grid-area: left; height:100vh; }
+  .bottom{ grid-area: right; height:100vh; }
+}
+.top{
+  position:relative;
+  background:#000;
+  overflow:hidden;
+}
+#view{
+  width:100%;
+  height:100%;
+  display:block;
+  background:#000;
+  touch-action:none;
+}
+.controls{
+  position:absolute;
+  left:0; right:0; top:0;
+  z-index:20;
+  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  padding:8px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.80) 90%, rgba(255,255,255,0) 100%);
+  border-bottom:1px solid rgba(0,0,0,0.06);
+}
+button{
+  background:var(--accent); color:#fff; border:0; border-radius:10px;
+  font-weight:700; padding:10px 12px;
+}
+button.secondary{ background:#666 }
+select{
+  height:42px; padding:0 10px; border-radius:10px; border:1px solid #ccc; background:#fff; font-weight:600;
+}
+.timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:78px }
+.spacer{ flex:1 1 auto }
+.bottom{
+  display:grid; grid-template-rows: auto 1fr auto; gap:8px; padding:10px;
+  min-height:0;
+}
+.status{
+  font-size:13px; color:#333; white-space:pre-wrap;
+  background:#fff; border:1px solid #eee; border-radius:10px; padding:8px;
+}
+.tableWrap{
+  min-height:0;
+  background:#fff; border:1px solid #eee; border-radius:10px; overflow:auto;
+}
+table{ width:100%; border-collapse:collapse; font-size:14px }
+thead th{
+  position:sticky; top:0; background:var(--accent); color:#fff; padding:8px; z-index:1;
+}
+td,th{ padding:8px; border-bottom:1px solid #f0f0f0; text-align:center }
+tr.done{ background:#e9f6ec }
+.footerBar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:#444 }
+@media (max-width:420px){
+  button{ padding:8px 10px }
+  .timer{ min-width:66px }
+  select{ height:38px }
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- ...HTML omitted for brevity, unchanged... -->
+  <section class="top">
+    <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
+    <div class="controls">
+      <button id="enableBtn">Enable Camera</button>
+      <button id="startBtn" class="secondary" disabled>Start</button>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <div class="timer" id="timer">00:00</div>
+      <label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>
+      <select id="lapsSel" aria-label="Number of laps"></select>
+      <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+      <span class="spacer"></span>
+      <label style="display:flex;align-items:center;gap:6px">
+        <input id="showVideo" type="checkbox" />
+        <span style="font-size:12px;color:#333">Debug video</span>
+      </label>
+    </div>
+  </section>
+  <section class="bottom">
+    <div class="status" id="status">Idle. Tap “Enable Camera”.</div>
+    <div class="tableWrap">
+      <table>
+        <thead>
+        <tr>
+          <th>Runner ID</th>
+          <th>Laps</th>
+          <th>Finish</th>
+          <th>Splits (mm:ss, …)</th>
+        </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="footerBar">
+      • Use large matte TopCodes • Good lighting improves scans • Codes auto-map to runners
+    </div>
+  </section>
 </div>
-
-<!-- TopCodes pure JS fiducial reader -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 <script>
-// ...JS logic from previous code block, unchanged...
+(() => {
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d', { willReadFrequently:true });
+const statusEl = document.getElementById('status');
+const tbody = document.getElementById('tbody');
+const timerEl = document.getElementById('timer');
+const enableBtn= document.getElementById('enableBtn');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const exportBtn= document.getElementById('exportBtn');
+const lapsSel = document.getElementById('lapsSel');
+const showVideoCb = document.getElementById('showVideo');
+for(let i=1;i<=20;i++){
+  const opt=document.createElement('option');
+  opt.value=i; opt.textContent=i; if(i===4) opt.selected=true;
+  lapsSel.appendChild(opt);
+}
+const TOPCODE_MAP = {31:1,47:2,55:3,59:4,61:5,79:6,87:7,91:8,93:9,103:10,107:11,109:12,115:13,117:14,121:15,143:16,151:17,155:18,157:19,167:20};
+function mapCode(raw) { return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null; }
+let stream=null, video=null;
+let cw=640, ch=360;
+let lineY=0;
+let running=false, counting=false, startTime=0, tick=null;
+let frameCount=0;
+const runners=new Map();
+const COOLDOWN=1200;
+let recorder=null, recordedChunks=[];
+let debugVideo=null;
+const setStatus=(...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };
+const msToMMSS=(ms)=>{ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+function ensureRunner(id){
+  if (!runners.has(id)){
+    runners.set(id, { laps:[], finished:false, lastTs:0 });
+    const tr=document.createElement('tr'); tr.id='r-'+CSS.escape(id);
+    tr.innerHTML = `
+      <td>${id}</td>
+      <td id="laps-${id}">0</td>
+      <td id="fin-${id}">-</td>
+      <td id="splits-${id}">-</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+function updateRunnerRow(id){
+  const r = runners.get(id);
+  const lapsCount = r.laps.length;
+  document.getElementById(`laps-${id}`).textContent = lapsCount;
+  document.getElementById(`fin-${id}`).textContent = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
+  document.getElementById(`splits-${id}`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
+  if (r.finished) document.getElementById('r-'+id)?.classList.add('done');
+}
+function countLap(id){
+  const now = Date.now();
+  const r = runners.get(id);
+  const req = parseInt(lapsSel.value,10);
+  if (r.finished) return;
+  if (now - r.lastTs < COOLDOWN) return;
+  r.laps.push(now - startTime);
+  r.lastTs = now;
+  if (r.laps.length >= req) r.finished = true;
+  updateRunnerRow(id);
+  setStatus(`Runner ${id} → Lap ${r.laps.length}${r.finished ? ' (Finished)' : ''}`);
+}
+function startRecording(){
+  recordedChunks=[];
+  const stream = canvas.captureStream ? canvas.captureStream(30) : null;
+  if (!stream){ setStatus('Recording not supported on this browser.'); return; }
+  const candidates=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+  let mime=''; for(const m of candidates){ if (MediaRecorder.isTypeSupported(m)) { mime=m; break; } }
+  try{
+    recorder = new MediaRecorder(stream, mime?{mimeType:mime}:{});
+  }catch(e){ setStatus('MediaRecorder failed: '+(e.message||e)); recorder=null; return; }
+  recorder.ondataavailable = e=>{ if (e.data && e.data.size) recordedChunks.push(e.data); };
+  recorder.onstop = ()=>{
+    if (!recordedChunks.length){ setStatus('No recording data.'); return; }
+    const blob = new Blob(recordedChunks, { type: recordedChunks[0].type || 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `run_session_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    setStatus('Recording saved.');
+  };
+  recorder.start();
+  setStatus('Recording started.');
+}
+function stopRecording(){ try{ recorder && recorder.state!=='inactive' && recorder.stop(); }catch(e){} }
+async function enableCamera(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus('getUserMedia not supported.'); return;
+  }
+  setStatus('Requesting camera…');
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+      audio:false
+    });
+  }catch(e){ setStatus('Camera error: '+(e.message||e)); return; }
+  video = document.createElement('video');
+  video.srcObject = stream; video.playsInline = true; video.muted = true;
+  await video.play().catch(()=>{});
+  await new Promise(r=>{ if (video.readyState>=2) r(); else video.onloadedmetadata=r; });
+  resizeCanvasToLayout();
+  enableBtn.disabled = true; startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = true;
+  if (showVideoCb.checked){
+    if (!debugVideo){
+      debugVideo = document.createElement('video');
+      debugVideo.style.position='fixed';
+      debugVideo.style.right='8px';
+      debugVideo.style.top='8px';
+      debugVideo.style.width='160px';
+      debugVideo.style.border='2px solid #fff';
+      debugVideo.style.zIndex=9999;
+      document.body.appendChild(debugVideo);
+    }
+    debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();
+  }
+  running = true;
+  TopCodes.startStopVideoScan('view', { video: { facingMode: "environment" } });
+  TopCodes.setVideoFrameCallback('view', handleFrame);
+  setStatus('Camera ready. Aim TopCode at red line. Press Start to time & record.');
+  requestAnimationFrame(loop);
+}
+function resizeCanvasToLayout(){
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cw = Math.max(320, Math.floor(rect.width * dpr));
+  ch = Math.max(240, Math.floor(rect.height * dpr));
+  canvas.width = cw; canvas.height = ch;
+  lineY = Math.round(ch * 0.5);
+}
+window.addEventListener('resize', resizeCanvasToLayout);
+function drawVideoCover(video, canvas, ctx){
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const cw = canvas.width, ch = canvas.height;
+  const vr = vw/vh, cr = cw/ch;
+  let sx=0, sy=0, sw=vw, sh=vh;
+  if (cr > vr){ sh = Math.round(vw/cr); sy = Math.floor((vh-sh)/2); }
+  else { sw = Math.round(vh*cr); sx = Math.floor((vw-sw)/2); }
+  try{ ctx.drawImage(video, sx,sy,sw,sh, 0,0,cw,ch); }catch(e){}
+}
+function loop(){
+  if (!running) return;
+  if (video && video.readyState>=2) drawVideoCover(video, canvas, ctx);
+  else ctx.clearRect(0,0,cw,ch);
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || 'red';
+  ctx.lineWidth = Math.max(3, ch/220);
+  ctx.beginPath(); ctx.moveTo(0,lineY); ctx.lineTo(cw,lineY); ctx.stroke();
+  requestAnimationFrame(loop);
+}
+function handleFrame(jsonString){
+  let data;
+  try{ data=JSON.parse(jsonString); }catch(e){ return; }
+  const tcodes = data.topcodes || [];
+  if (!counting) return;
+  const now=Date.now();
+  const thresholdBase = Math.max(16, ch/10);
+  for(const tc of tcodes){
+    const rawCode = tc.code;
+    const runnerID = mapCode(rawCode);
+    if(!runnerID) continue;
+    const cy=tc.y;
+    const radius=tc.radius||20;
+    if(Math.abs(cy-lineY) <= Math.max(thresholdBase, radius*0.9)){
+      ensureRunner(runnerID);
+      countLap(runnerID);
+    }
+  }
+}
+enableBtn.addEventListener('click', async ()=>{
+  enableBtn.disabled = true;
+  await enableCamera();
+});
+startBtn.addEventListener('click', ()=>{
+  if (!stream){ setStatus('Enable camera first.'); return; }
+  if (counting) return;
+  runners.clear(); tbody.innerHTML='';
+  counting = true; startTime = Date.now();
+  timerEl.textContent = '00:00';
+  tick = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);
+  startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
+  startRecording();
+});
+stopBtn.addEventListener('click', ()=>{
+  if (!counting) return;
+  counting=false; clearInterval(tick); tick=null;
+  startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;
+  stopRecording();
+  setStatus('Stopped. You can export CSV now.');
+});
+exportBtn.addEventListener('click', ()=>{
+  const rows=[];
+  const maxLaps = Array.from(runners.values()).reduce((m,r)=>Math.max(m, r.laps.length), 0);
+  rows.push(['Runner ID','Total Laps','Finish', ...Array.from({length:maxLaps},(_,i)=>`Lap ${i+1}`)]);
+  for (const [id, r] of runners.entries()){
+    const finish = r.laps.length ? msToMMSS(r.laps[r.laps.length-1]) : '-';
+    rows.push([id, String(r.laps.length), finish, ...r.laps.map(msToMMSS)]);
+  }
+  const csv = rows.map(r=>r.map(c=>{
+    const s=String(c); return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], { type:'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download = `topcodes_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+showVideoCb.addEventListener('change', ()=>{
+  if (!stream) return;
+  if (showVideoCb.checked){
+    if (!debugVideo){
+      debugVideo = document.createElement('video');
+      debugVideo.style.position='fixed';
+      debugVideo.style.right='8px';
+      debugVideo.style.top='8px';
+      debugVideo.style.width='160px';
+      debugVideo.style.border='2px solid #fff';
+      debugVideo.style.zIndex=9999;
+      document.body.appendChild(debugVideo);
+    }
+    debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();
+  }else{
+    if (debugVideo){ debugVideo.pause(); debugVideo.srcObject=null; debugVideo.remove(); debugVideo=null; }
+  }
+});
+resizeCanvasToLayout();
+setStatus('Idle. Tap “Enable Camera”.');
+})();
 </script>
 </body>
 </html>
