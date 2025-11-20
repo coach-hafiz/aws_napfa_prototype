@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>QR / Barcode Lap Counter — Responsive</title>
+<title>TopCodes Lap Counter — Countdown</title>
 <style>
 :root{
   --accent:#015871;
@@ -54,7 +54,7 @@ body{
   overflow:hidden;
 }
 
-/* We render video + overlays into ONE canvas */
+/* TopCodes will draw into this canvas */
 #view{
   width:100%;
   height:100%;
@@ -78,7 +78,6 @@ body{
   );
   border-bottom:1px solid rgba(0,0,0,0.06);
 }
-
 button{
   background:var(--accent);
   color:#fff;
@@ -113,9 +112,8 @@ select{
   grid-template-rows: auto 1fr auto;
   gap:8px;
   padding:10px;
-  min-height:0; /* allow child scrolling */
+  min-height:0;
 }
-
 .status{
   font-size:13px;
   color:#333;
@@ -125,7 +123,6 @@ select{
   border-radius:10px;
   padding:8px;
 }
-
 .tableWrap{
   min-height:0;
   background:#fff;
@@ -174,6 +171,7 @@ tr.done{ background:#e9f6ec }
 <div class="app">
   <section class="top">
     <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
+
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
@@ -188,7 +186,7 @@ tr.done{ background:#e9f6ec }
       <span class="spacer"></span>
 
       <span style="font-size:11px;color:#555">
-        Aim QR/barcodes so they cross the red line.
+        Aim TopCodes so they cross the red line.
       </span>
     </div>
   </section>
@@ -209,17 +207,16 @@ tr.done{ background:#e9f6ec }
       </table>
     </div>
     <div class="footerBar">
-      • Use clear QR codes (or barcodes encoded as QR) • Good lighting improves scans • Tags can be angled, not perfectly flat
+      • Use printed TopCodes (IDs 1–20 via mapping) • Good lighting improves scans • Tags can be angled, not perfectly flat
     </div>
   </section>
 </div>
 
-<!-- jsQR: pure JS QR reader -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<!-- TopCodes library -->
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
 (function(){
-  // ===== DOM =====
   var canvas   = document.getElementById('view');
   var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
@@ -233,7 +230,8 @@ tr.done{ background:#e9f6ec }
   var lapsSel  = document.getElementById('lapsSel');
 
   // Populate laps 1..20 (default 4)
-  for (var i=1;i<=20;i++){
+  var i;
+  for (i=1;i<=20;i++){
     var opt=document.createElement('option');
     opt.value=i;
     opt.textContent=i;
@@ -241,18 +239,28 @@ tr.done{ background:#e9f6ec }
     lapsSel.appendChild(opt);
   }
 
-  // ===== State =====
-  var stream=null, video=null;
-  var cw=640, ch=360;
-  var lineY=0;
-  var running=false, counting=false, startTime=0, timerTick=null;
-  var frameCount=0;
-  var COOLDOWN=1200; // ms per runner to prevent double-counts
+  // TopCode -> Runner ID mapping (A)
+  var TOPCODE_MAP = {
+    31:1,  47:2,  55:3,  59:4,  61:5,
+    79:6,  87:7,  91:8,  93:9,  103:10,
+    107:11,109:12,115:13,117:14,121:15,
+    143:16,151:17,155:18,157:19,167:20
+  };
 
-  // id -> {laps: [ms], lastTs, finished, totalLaps}
-  var runners=new Map();
+  function mapCode(raw){
+    return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
+  }
 
-  // ===== Helpers =====
+  // State
+  var counting   = false;
+  var startTime  = 0;
+  var timerTick  = null;
+  var lineY      = null;  // in canvas pixels
+  var COOLDOWN   = 1200;  // ms between laps for same runner
+
+  // runners[id] = { laps:[], lastTs, finished, totalLaps }
+  var runners    = {};
+
   function setStatus(msg){
     statusEl.textContent = msg;
     console.log(msg);
@@ -262,11 +270,7 @@ tr.done{ background:#e9f6ec }
     var s = Math.floor(ms/1000);
     var m = Math.floor(s/60);
     var ss= s % 60;
-    return String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
-  }
-
-  function safeKey(id){
-    return String(id).replace(/[^a-zA-Z0-9_-]/g,'_');
+    return (m<10?'0':'')+m + ':' + (ss<10?'0':'')+ss;
   }
 
   function colorForRemaining(rem){
@@ -282,37 +286,41 @@ tr.done{ background:#e9f6ec }
   }
 
   function ensureRunner(id){
-    if (!runners.has(id)){
+    var key = String(id);
+    if (!runners[key]){
       var total = parseInt(lapsSel.value,10);
-      runners.set(id, { laps:[], lastTs:0, finished:false, totalLaps: total });
+      runners[key] = { laps:[], lastTs:0, finished:false, totalLaps: total };
 
-      var safe = safeKey(id);
       var tr = document.createElement('tr');
-      tr.id = 'r-' + safe;
+      tr.id = 'r-'+key;
       tr.innerHTML =
         '<td>'+id+'</td>'+
-        '<td id="laps-'+safe+'">'+total+'</td>'+
-        '<td id="fin-'+safe+'">-</td>'+
-        '<td id="splits-'+safe+'">-</td>';
+        '<td id="laps-'+key+'">'+total+'</td>'+
+        '<td id="fin-'+key+'">-</td>'+
+        '<td id="splits-'+key+'">-</td>';
       tbody.appendChild(tr);
     }
   }
 
   function updateRunnerRow(id){
-    var r = runners.get(id);
-    var safe = safeKey(id);
-    var lapsDone = r.laps.length;
-    var remaining = Math.max(r.totalLaps - lapsDone, 0);
+    var key = String(id);
+    var r = runners[key];
+    if (!r) return;
 
-    var lapsCell   = document.getElementById('laps-'+safe);
-    var finCell    = document.getElementById('fin-'+safe);
-    var splitsCell = document.getElementById('splits-'+safe);
+    var lapsDone  = r.laps.length;
+    var remaining = r.totalLaps - lapsDone;
+    if (remaining < 0) remaining = 0;
+
+    var lapsCell   = document.getElementById('laps-'+key);
+    var finCell    = document.getElementById('fin-'+key);
+    var splitsCell = document.getElementById('splits-'+key);
 
     if (lapsCell){
       lapsCell.textContent = remaining;
-      var color = colorForRemaining(remaining);
-      lapsCell.style.backgroundColor = color;
-      lapsCell.style.color = (remaining <= 1) ? '#fff' : '#000';
+      var c = colorForRemaining(remaining);
+      lapsCell.style.backgroundColor = c;
+      if (remaining <= 1) lapsCell.style.color = '#fff';
+      else lapsCell.style.color = '#000';
     }
 
     if (finCell){
@@ -323,19 +331,29 @@ tr.done{ background:#e9f6ec }
     }
 
     if (splitsCell){
-      splitsCell.textContent = lapsDone ? r.laps.map(msToMMSS).join(' | ') : '-';
+      if (lapsDone){
+        var parts = [];
+        for (var i=0;i<r.laps.length;i++){
+          parts.push(msToMMSS(r.laps[i]));
+        }
+        splitsCell.textContent = parts.join(' | ');
+      } else {
+        splitsCell.textContent = '-';
+      }
     }
 
     if (r.finished){
-      var row = document.getElementById('r-'+safe);
+      var row = document.getElementById('r-'+key);
       if (row) row.classList.add('done');
     }
   }
 
   function countLap(id){
-    var now = Date.now();
-    var r   = runners.get(id);
+    var key = String(id);
+    var r = runners[key];
+    if (!r) return;
 
+    var now = Date.now();
     if (r.finished) return;
     if (now - r.lastTs < COOLDOWN) return;
 
@@ -348,8 +366,9 @@ tr.done{ background:#e9f6ec }
 
     updateRunnerRow(id);
 
-    var remaining = Math.max(r.totalLaps - r.laps.length, 0);
-    setStatus('Runner '+id+' → laps left: '+remaining+(r.finished ? ' (Finished)' : ''));
+    var rem = r.totalLaps - r.laps.length;
+    if (rem < 0) rem = 0;
+    setStatus('Runner '+id+' → laps left: '+rem+(r.finished ? ' (Finished)' : ''));
   }
 
   function startTimer(){
@@ -367,239 +386,81 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  // ===== Camera =====
-  async function enableCamera(){
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      setStatus('getUserMedia not supported in this browser.');
-      return;
-    }
-    setStatus('Requesting camera…');
+  // ===== TopCodes frame callback =====
+  function handleFrame(jsonString){
+    var data;
     try{
-      stream = await navigator.mediaDevices.getUserMedia({
-        video:{
-          facingMode:{ ideal:'environment' },
-          width:{ ideal:640 },
-          height:{ ideal:360 }
-        },
-        audio:false
-      });
+      data = JSON.parse(jsonString);
     }catch(e){
-      setStatus('Camera error: '+(e.message || e));
       return;
     }
+    var tcodes = data.topcodes || [];
+    var w = canvas.width  || 640;
+    var h = canvas.height || 480;
 
-    video = document.createElement('video');
-    video.srcObject = stream;
-    video.playsInline = true;
-    video.muted = true;
+    // Compute line every frame (in case canvas size changes)
+    lineY = Math.round(h * 0.5);
+    var band = Math.max(16, h*0.10); // +/- band around line
 
-    try { await video.play(); } catch(e){}
-
-    await new Promise(function(resolve){
-      if (video.readyState >= 2) resolve();
-      else video.onloadedmetadata = resolve;
-    });
-
-    resizeCanvasToLayout();
-
-    enableBtn.disabled = true;
-    startBtn.disabled  = false;
-    stopBtn.disabled   = true;
-    exportBtn.disabled = true;
-
-    running = true;
-    requestAnimationFrame(loop);
-
-    setStatus('Camera ready. Aim QR codes at the red line. Tap “Start” to begin.');
-  }
-
-  function resizeCanvasToLayout(){
-    var rect = canvas.getBoundingClientRect();
-    var dpr  = window.devicePixelRatio || 1;
-    cw = Math.max(320, Math.floor(rect.width * dpr));
-    ch = Math.max(240, Math.floor(rect.height * dpr));
-    canvas.width  = cw;
-    canvas.height = ch;
-    lineY = Math.round(ch * 0.5);
-  }
-  window.addEventListener('resize', resizeCanvasToLayout);
-
-  function drawVideoCover(){
-    if (!video || video.readyState < 2){
-      ctx.clearRect(0,0,cw,ch);
-      return;
-    }
-    var vw = video.videoWidth  || 640;
-    var vh = video.videoHeight || 360;
-    var vr = vw / vh;
-    var cr = cw / ch;
-
-    var sx=0, sy=0, sw=vw, sh=vh;
-    if (cr > vr){
-      sh = Math.round(vw / cr);
-      sy = Math.floor((vh - sh) / 2);
-    } else {
-      sw = Math.round(vh * cr);
-      sx = Math.floor((vw - sw) / 2);
-    }
-    try{
-      ctx.drawImage(video, sx,sy,sw,sh, 0,0,cw,ch);
-    }catch(e){}
-  }
-
-  // ===== Multi-QR detection using jsQR =====
-  function detectMultipleQRCodesInBand(maxCodes){
-    var bandH = Math.max(Math.floor(ch * 0.4), 120); // 40% height band
-    var y0    = Math.max(0, lineY - Math.floor(bandH/2));
-    if (y0 + bandH > ch) bandH = ch - y0;
-
-    var imgData = ctx.getImageData(0, y0, cw, bandH);
-    var data    = imgData.data;
-    var results = [];
-    var tries   = 0;
-
-    while (tries < maxCodes){
-      var qr = jsQR(data, imgData.width, imgData.height, {
-        inversionAttempts: "attemptBoth"
-      });
-      if (!qr || !qr.data) break;
-
-      results.push({
-        data: qr.data,
-        location: {
-          topLeftCorner: {
-            x: qr.location.topLeftCorner.x,
-            y: qr.location.topLeftCorner.y + y0
-          },
-          topRightCorner: {
-            x: qr.location.topRightCorner.x,
-            y: qr.location.topRightCorner.y + y0
-          },
-          bottomRightCorner: {
-            x: qr.location.bottomRightCorner.x,
-            y: qr.location.bottomRightCorner.y + y0
-          },
-          bottomLeftCorner: {
-            x: qr.location.bottomLeftCorner.x,
-            y: qr.location.bottomLeftCorner.y + y0
-          }
-        }
-      });
-
-      // Mask out the detected QR so jsQR can find another
-      var xs = [
-        qr.location.topLeftCorner.x,
-        qr.location.topRightCorner.x,
-        qr.location.bottomLeftCorner.x,
-        qr.location.bottomRightCorner.x
-      ];
-      var ys = [
-        qr.location.topLeftCorner.y,
-        qr.location.topRightCorner.y,
-        qr.location.bottomLeftCorner.y,
-        qr.location.bottomRightCorner.y
-      ];
-      var minX = Math.max(0, Math.floor(Math.min.apply(null,xs)));
-      var maxX = Math.min(imgData.width-1, Math.ceil(Math.max.apply(null,xs)));
-      var minY = Math.max(0, Math.floor(Math.min.apply(null,ys)));
-      var maxY = Math.min(imgData.height-1, Math.ceil(Math.max.apply(null,ys)));
-
-      for (var y=minY; y<=maxY; y++){
-        for (var x=minX; x<=maxX; x++){
-          var idx = (y * imgData.width + x) * 4;
-          data[idx]   = 255;
-          data[idx+1] = 255;
-          data[idx+2] = 255;
-          data[idx+3] = 255;
-        }
-      }
-
-      tries++;
-    }
-
-    return results;
-  }
-
-  // ===== Main loop: draw frame → line → detect QRs =====
-  function loop(){
-    if (!running) return;
-
-    drawVideoCover();
-
-    // red start line
-    ctx.strokeStyle = getComputedStyle(document.documentElement)
-      .getPropertyValue('--line').trim() || 'red';
-    ctx.lineWidth = Math.max(3, ch/220);
+    // Draw red line on top of video frame
+    ctx.save();
+    var lineColor = getComputedStyle(document.documentElement)
+      .getPropertyValue('--line') || 'red';
+    ctx.strokeStyle = lineColor.trim() || 'red';
+    ctx.lineWidth   = Math.max(3, h/220);
     ctx.beginPath();
     ctx.moveTo(0, lineY);
-    ctx.lineTo(cw, lineY);
+    ctx.lineTo(w, lineY);
     ctx.stroke();
+    ctx.restore();
 
-    frameCount++;
+    if (!counting) return;
 
-    if (video && video.readyState >= 2){
-      if (frameCount % 2 === 0){ // throttle detection
-        var qrs = detectMultipleQRCodesInBand(5); // up to 5 per frame
+    for (var i=0;i<tcodes.length;i++){
+      var tc = tcodes[i];
+      var rawCode = tc.code;
+      var runnerID = mapCode(rawCode);
+      if (!runnerID) continue;
 
-        var threshold = Math.max(16, ch/10);
+      // centre of the code in canvas pixels
+      var cy = tc.y;
 
-        for (var i=0;i<qrs.length;i++){
-          var qr = qrs[i];
-          var pts = qr.location;
-          var cx = (pts.topLeftCorner.x + pts.topRightCorner.x +
-                    pts.bottomLeftCorner.x + pts.bottomRightCorner.x) / 4;
-          var cy = (pts.topLeftCorner.y + pts.topRightCorner.y +
-                    pts.bottomLeftCorner.y + pts.bottomRightCorner.y) / 4;
-
-          // visual feedback
-          ctx.save();
-          ctx.strokeStyle='lime';
-          ctx.lineWidth=Math.max(2, ch/360);
-          ctx.beginPath();
-          ctx.moveTo(pts.topLeftCorner.x, pts.topLeftCorner.y);
-          ctx.lineTo(pts.topRightCorner.x, pts.topRightCorner.y);
-          ctx.lineTo(pts.bottomRightCorner.x, pts.bottomRightCorner.y);
-          ctx.lineTo(pts.bottomLeftCorner.x, pts.bottomLeftCorner.y);
-          ctx.closePath();
-          ctx.stroke();
-
-          ctx.fillStyle='rgba(0,255,0,0.25)';
-          ctx.beginPath();
-          ctx.arc(cx, cy, Math.max(4, ch/200), 0, Math.PI*2);
-          ctx.fill();
-          ctx.restore();
-
-          // band around line
-          if (Math.abs(cy - lineY) <= threshold){
-            var id = String(qr.data || '').trim();
-            if (!id) continue;
-            ensureRunner(id);
-            if (counting){
-              countLap(id);
-            }
-          }
-        }
+      // Only count when centre is close to the line
+      if (Math.abs(cy - lineY) <= band){
+        ensureRunner(runnerID);
+        countLap(runnerID);
       }
     }
-
-    requestAnimationFrame(loop);
   }
 
   // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
-    enableBtn.disabled = true;
-    enableCamera();
+    try{
+      // TopCodes handles getUserMedia and drawing into the canvas
+      TopCodes.startStopVideoScan('view', {
+        video: { facingMode: "environment" }
+      });
+      TopCodes.setVideoFrameCallback('view', handleFrame);
+
+      enableBtn.disabled = true;
+      startBtn.disabled  = false;
+      stopBtn.disabled   = true;
+      exportBtn.disabled = true;
+
+      setStatus('Camera ready. Aim TopCodes so they cross the red line. Tap “Start” to begin.');
+    }catch(e){
+      console.error(e);
+      setStatus('Camera error: ' + (e.message || e));
+      enableBtn.disabled = false;
+    }
   });
 
   startBtn.addEventListener('click', function(){
-    if (!stream){
-      setStatus('Enable camera first.');
-      return;
-    }
     if (counting) return;
 
-    runners.clear();
-    tbody.innerHTML = '';
+    // reset runners and table
+    runners = {};
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
     counting = true;
     startTimer();
@@ -608,7 +469,7 @@ tr.done{ background:#e9f6ec }
     stopBtn.disabled   = false;
     exportBtn.disabled = true;
 
-    setStatus('Counting… QR codes crossing the line will reduce laps left.');
+    setStatus('Counting… TopCodes crossing the line will reduce laps left.');
   });
 
   stopBtn.addEventListener('click', function(){
@@ -617,62 +478,77 @@ tr.done{ background:#e9f6ec }
     stopTimer();
 
     // Mark unfinished as DNF
-    runners.forEach(function(r, id){
-      if (!r.finished){
-        var safe = safeKey(id);
-        var finCell = document.getElementById('fin-'+safe);
-        if (finCell) finCell.textContent = 'DNF';
+    for (var id in runners){
+      if (runners.hasOwnProperty(id)){
+        var r = runners[id];
+        if (!r.finished){
+          var finCell = document.getElementById('fin-'+id);
+          if (finCell){
+            finCell.textContent = 'DNF';
+          }
+        }
       }
-    });
+    }
 
     startBtn.disabled  = false;
     stopBtn.disabled   = true;
-    exportBtn.disabled = runners.size === 0;
+    exportBtn.disabled = Object.keys(runners).length === 0;
 
     setStatus('Stopped. You can export CSV now.');
   });
 
   exportBtn.addEventListener('click', function(){
-    if (!runners.size){
+    var ids = Object.keys(runners);
+    if (!ids.length){
       setStatus('No data to export.');
       return;
     }
 
     var maxLaps = 0;
-    runners.forEach(function(r){
+    var idIdx;
+    for (idIdx=0; idIdx<ids.length; idIdx++){
+      var r = runners[ids[idIdx]];
       if (r.laps.length > maxLaps) maxLaps = r.laps.length;
-    });
+    }
 
     var rows = [];
     var header = ['Runner ID','Total Laps','Finish'];
-    for (var i=1;i<=maxLaps;i++) header.push('Lap '+i);
+    var j;
+    for (j=1;j<=maxLaps;j++) header.push('Lap '+j);
     rows.push(header);
 
-    runners.forEach(function(r, id){
-      var total  = r.totalLaps;
-      var lapsDone = r.laps.length;
-      var finish = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : 'DNF';
+    for (idIdx=0; idIdx<ids.length; idIdx++){
+      var id = ids[idIdx];
+      var rr = runners[id];
+      var total  = rr.totalLaps;
+      var lapsDone = rr.laps.length;
+      var finish = lapsDone ? msToMMSS(rr.laps[lapsDone-1]) : 'DNF';
       var row    = [id, String(total), finish];
-      for (var j=0;j<maxLaps;j++){
-        row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
+      for (j=0;j<maxLaps;j++){
+        row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
       }
       rows.push(row);
-    });
+    }
 
-    var csv = rows.map(function(r){
-      return r.map(function(c){
-        var s = String(c);
-        return (s.indexOf(',') !== -1)
-          ? '"' + s.replace(/"/g,'""') + '"'
-          : s;
-      }).join(',');
-    }).join('\n');
+    var csv = '';
+    for (i=0;i<rows.length;i++){
+      var cols = rows[i];
+      var parts = [];
+      for (j=0;j<cols.length;j++){
+        var s = String(cols[j]);
+        if (s.indexOf(',') !== -1){
+          s = '"' + s.replace(/"/g,'""') + '"';
+        }
+        parts.push(s);
+      }
+      csv += parts.join(',') + '\n';
+    }
 
     var encoded = encodeURIComponent(csv);
     var href    = 'data:text/csv;charset=utf-8,' + encoded;
     var a       = document.createElement('a');
     a.href      = href;
-    a.download  = 'qr_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -681,8 +557,7 @@ tr.done{ background:#e9f6ec }
   });
 
   // Initial UI
-  setStatus('Idle. Tap “Enable Camera”.');
-
+  setStatus('Idle. Tap “Enable Camera”. TopCodes only (no QR / barcodes).');
 })();
 </script>
 </body>
