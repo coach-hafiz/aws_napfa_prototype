@@ -4278,14 +4278,20 @@ var TopCodes = {
       var vw = parseInt(canvas.getAttribute('width'));
       var vh = parseInt(canvas.getAttribute('height'));
       var vc = { audio: false, video: { mandatory : { minWidth: vw, maxWidth : vw, minHeight : vh, maxHeight : vh }}}; 
-      navigator.mediaDevices.getUserMedia(vc)
-        .then(function(mediaStream) {
-          video.srcObject = mediaStream;
-          TopCodes._mediaStreams[canvasId] = mediaStream;
-        })
-        .catch(function (error) {
-          console.log(error);
-        });
+      navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode: { ideal: "environment" }  // prefer rear camera
+  },
+  audio: false
+})
+  .then(function(mediaStream) {
+    video.srcObject = mediaStream;
+    TopCodes._mediaStreams[canvasId] = mediaStream;
+  })
+  .catch(function (error) {
+    console.log(error);
+  });
+
     }
   },
 
