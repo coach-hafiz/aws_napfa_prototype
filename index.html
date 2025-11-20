@@ -202,22 +202,22 @@ tr.done{ background:#e9f6ec }
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
-(() => {
-  const canvas   = document.getElementById('view');
-  const ctx      = canvas.getContext('2d', { willReadFrequently:true });
+(function(){
+  var canvas   = document.getElementById('view');
+  var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
-  const statusEl = document.getElementById('status');
-  const tbody    = document.getElementById('tbody');
-  const timerEl  = document.getElementById('timer');
-  const enableBtn= document.getElementById('enableBtn');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
-  const exportBtn= document.getElementById('exportBtn');
-  const lapsSel  = document.getElementById('lapsSel');
+  var statusEl = document.getElementById('status');
+  var tbody    = document.getElementById('tbody');
+  var timerEl  = document.getElementById('timer');
+  var enableBtn= document.getElementById('enableBtn');
+  var startBtn = document.getElementById('startBtn');
+  var stopBtn  = document.getElementById('stopBtn');
+  var exportBtn= document.getElementById('exportBtn');
+  var lapsSel  = document.getElementById('lapsSel');
 
   // Populate laps 1–20 (default 4)
-  for (let i=1;i<=20;i++){
-    const opt=document.createElement('option');
+  for (var i=1;i<=20;i++){
+    var opt=document.createElement('option');
     opt.value=i;
     opt.textContent=i;
     if(i===4) opt.selected=true;
@@ -225,68 +225,73 @@ tr.done{ background:#e9f6ec }
   }
 
   // TopCode → Runner ID mapping
-  const TOPCODE_MAP = {
+  var TOPCODE_MAP = {
     31:1,47:2,55:3,59:4,61:5,
     79:6,87:7,91:8,93:9,103:10,
     107:11,109:12,115:13,117:14,121:15,
     143:16,151:17,155:18,157:19,167:20
   };
-  const mapCode = raw => TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
+  function mapCode(raw){
+    return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
+  }
 
   // State
-  let counting    = false;
-  let startTime   = 0;
-  let timerTick   = null;
-  let lineY       = null;  // computed from canvas height after first frame
-  let lastCanvasW = 0;
-  let lastCanvasH = 0;
-  const COOLDOWN  = 1200;  // ms between laps for same runner
-  const runners   = new Map(); // runnerID -> {laps: [ms,...], lastTs, finished}
+  var counting    = false;
+  var startTime   = 0;
+  var timerTick   = null;
+  var lineY       = null;  // computed from canvas height after first frame
+  var lastCanvasW = 0;
+  var lastCanvasH = 0;
+  var COOLDOWN    = 1200;  // ms between laps for same runner
+  var runners     = new Map(); // runnerID -> {laps: [ms,...], lastTs, finished}
 
-  const setStatus = (...parts) => {
-    const msg = parts.join(' ');
+  function setStatus(msg){
     statusEl.textContent = msg;
     console.log(msg);
-  };
+  }
 
-  const msToMMSS = ms => {
-    const s = Math.floor(ms/1000);
-    const m = Math.floor(s/60);
-    const ss= s % 60;
+  function msToMMSS(ms){
+    var s = Math.floor(ms/1000);
+    var m = Math.floor(s/60);
+    var ss= s % 60;
     return String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
-  };
+  }
 
   function ensureRunner(id){
     if (!runners.has(id)){
       runners.set(id, { laps:[], lastTs:0, finished:false });
-      const tr = document.createElement('tr');
+      var tr = document.createElement('tr');
       tr.id = 'r-'+id;
-      tr.innerHTML = `
-        <td>${id}</td>
-        <td id="laps-${id}">0</td>
-        <td id="fin-${id}">-</td>
-        <td id="splits-${id}">-</td>
-      `;
+      tr.innerHTML =
+        '<td>'+id+'</td>'+
+        '<td id="laps-'+id+'">0</td>'+
+        '<td id="fin-'+id+'">-</td>'+
+        '<td id="splits-'+id+'">-</td>';
       tbody.appendChild(tr);
     }
   }
 
   function updateRunnerRow(id){
-    const r = runners.get(id);
-    const lapsCount = r.laps.length;
-    document.getElementById(\`laps-\${id}\`).textContent   = lapsCount;
-    document.getElementById(\`fin-\${id}\`).textContent    = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
-    document.getElementById(\`splits-\${id}\`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
+    var r = runners.get(id);
+    var lapsCount = r.laps.length;
+    var lapsCell   = document.getElementById('laps-'+id);
+    var finCell    = document.getElementById('fin-'+id);
+    var splitsCell = document.getElementById('splits-'+id);
+
+    if (lapsCell)   lapsCell.textContent   = lapsCount;
+    if (finCell)    finCell.textContent    = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
+    if (splitsCell) splitsCell.textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
+
     if (r.finished){
-      const row = document.getElementById('r-'+id);
+      var row = document.getElementById('r-'+id);
       if (row) row.classList.add('done');
     }
   }
 
   function countLap(id){
-    const r   = runners.get(id);
-    const now = Date.now();
-    const req = parseInt(lapsSel.value,10);
+    var r   = runners.get(id);
+    var now = Date.now();
+    var req = parseInt(lapsSel.value,10);
 
     if (r.finished) return;
     if (now - r.lastTs < COOLDOWN) return;
@@ -300,13 +305,13 @@ tr.done{ background:#e9f6ec }
 
     updateRunnerRow(id);
 
-    setStatus(\`Runner \${id} → Lap \${r.laps.length}\${r.finished ? ' (Finished)' : ''}\`);
+    setStatus('Runner '+id+' → Lap '+r.laps.length+(r.finished ? ' (Finished)' : ''));
   }
 
   function startTimer(){
     startTime = Date.now();
     timerEl.textContent = '00:00';
-    timerTick = setInterval(()=>{
+    timerTick = setInterval(function(){
       timerEl.textContent = msToMMSS(Date.now()-startTime);
     }, 1000);
   }
@@ -319,15 +324,15 @@ tr.done{ background:#e9f6ec }
   }
 
   // TopCodes frame callback
-  let frameSkip = 0;
+  var frameSkip = 0;
   function handleFrame(jsonString){
-    let data;
+    var data;
     try {
       data = JSON.parse(jsonString);
     } catch(e){
       return;
     }
-    const tcodes = data.topcodes || [];
+    var tcodes = data.topcodes || [];
 
     // TopCodes sets the canvas size to match the video feed.
     // Recompute lineY when that happens (but we NEVER change canvas size ourselves).
@@ -344,11 +349,12 @@ tr.done{ background:#e9f6ec }
     // Draw red line overlay every 2nd frame (reduces work, avoids flicker)
     frameSkip++;
     if (frameSkip % 2 === 0){
-      const h = canvas.height || lastCanvasH;
-      const w = canvas.width  || lastCanvasW;
+      var h = canvas.height || lastCanvasH;
+      var w = canvas.width  || lastCanvasW;
       ctx.save();
-      ctx.strokeStyle = getComputedStyle(document.documentElement)
+      var lineColor = getComputedStyle(document.documentElement)
         .getPropertyValue('--line').trim() || 'red';
+      ctx.strokeStyle = lineColor;
       ctx.lineWidth = Math.max(3, h/220);
       ctx.beginPath();
       ctx.moveTo(0, lineY);
@@ -359,17 +365,18 @@ tr.done{ background:#e9f6ec }
 
     if (!counting) return;
 
-    const now = Date.now();
-    const h   = canvas.height || lastCanvasH || 480;
-    const thresholdBase = Math.max(16, h/10); // vertical tolerance around line
+    var now = Date.now();
+    var h2  = canvas.height || lastCanvasH || 480;
+    var thresholdBase = Math.max(16, h2/10); // vertical tolerance around line
 
-    for (const tc of tcodes){
-      const rawCode  = tc.code;
-      const runnerID = mapCode(rawCode);
+    for (var i=0;i<tcodes.length;i++){
+      var tc = tcodes[i];
+      var rawCode  = tc.code;
+      var runnerID = mapCode(rawCode);
       if (!runnerID) continue;
 
-      const cy     = tc.y;
-      const radius = tc.radius || 20;
+      var cy     = tc.y;
+      var radius = tc.radius || 20;
 
       if (Math.abs(cy - lineY) <= Math.max(thresholdBase, radius*0.9)){
         ensureRunner(runnerID);
@@ -379,7 +386,7 @@ tr.done{ background:#e9f6ec }
   }
 
   // Buttons
-  enableBtn.addEventListener('click', () => {
+  enableBtn.addEventListener('click', function(){
     try{
       // Let TopCodes own the camera & canvas completely
       TopCodes.startStopVideoScan('view');
@@ -398,7 +405,7 @@ tr.done{ background:#e9f6ec }
     }
   });
 
-  startBtn.addEventListener('click', () => {
+  startBtn.addEventListener('click', function(){
     runners.clear();
     tbody.innerHTML = '';
 
@@ -412,65 +419,65 @@ tr.done{ background:#e9f6ec }
     setStatus('Counting laps…');
   });
 
-  stopBtn.addEventListener('click', () => {
+  stopBtn.addEventListener('click', function(){
     if (!counting) return;
     counting = false;
     stopTimer();
 
     // Mark unfinished as DNF
-    for (const [id, r] of runners.entries()){
+    runners.forEach(function(r, id){
       if (!r.finished){
-        const finCell = document.getElementById('fin-'+id);
+        var finCell = document.getElementById('fin-'+id);
         if (finCell) finCell.textContent = 'DNF';
       }
-    }
+    });
 
     startBtn.disabled  = false;
     stopBtn.disabled   = true;
-    exportBtn.disabled = runners.size === 0; // enable if we have data
+    exportBtn.disabled = runners.size === 0;
 
     setStatus('Stopped. You can export CSV now.');
   });
 
-  exportBtn.addEventListener('click', () => {
+  exportBtn.addEventListener('click', function(){
     if (!runners.size){
       setStatus('No data to export.');
       return;
     }
 
-    let maxLaps = 0;
-    for (const r of runners.values()){
+    var maxLaps = 0;
+    runners.forEach(function(r){
       if (r.laps.length > maxLaps) maxLaps = r.laps.length;
-    }
+    });
 
-    const rows = [];
-    const header = ['Runner ID', 'Total Laps', 'Finish'];
-    for (let i=1;i<=maxLaps;i++) header.push(\`Lap \${i}\`);
+    var rows = [];
+    var header = ['Runner ID', 'Total Laps', 'Finish'];
+    for (var i=1;i<=maxLaps;i++) header.push('Lap '+i);
     rows.push(header);
 
-    for (const [id, r] of runners.entries()){
-      const total  = r.laps.length;
-      const finish = total ? msToMMSS(r.laps[total-1]) : 'DNF';
-      const row    = [id, String(total), finish];
-      for (let i=0;i<maxLaps;i++){
-        row.push(r.laps[i] != null ? msToMMSS(r.laps[i]) : '');
+    runners.forEach(function(r, id){
+      var total  = r.laps.length;
+      var finish = total ? msToMMSS(r.laps[total-1]) : 'DNF';
+      var row    = [id, String(total), finish];
+      for (var j=0;j<maxLaps;j++){
+        row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
       }
       rows.push(row);
-    }
+    });
 
-    const csv = rows.map(r =>
-      r.map(c => {
-        const s = String(c);
-        return s.includes(',') ? '"' + s.replace(/"/g,'""') + '"' : s;
-      }).join(',')
-    ).join('\n');
+    var csv = rows.map(function(r){
+      return r.map(function(c){
+        var s = String(c);
+        return s.indexOf(',') !== -1 ? '"' + s.replace(/"/g,'""') + '"' : s;
+      }).join(',');
+    }).join('\n');
 
     // Data URL for Safari-friendly download
-    const encoded = encodeURIComponent(csv);
-    const href    = 'data:text/csv;charset=utf-8,' + encoded;
-    const a       = document.createElement('a');
-    a.href        = href;
-    a.download    = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    var encoded = encodeURIComponent(csv);
+    var href    = 'data:text/csv;charset=utf-8,' + encoded;
+    var a       = document.createElement('a');
+    a.href      = href;
+    a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
