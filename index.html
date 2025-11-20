@@ -1,189 +1,42 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>TopCodes Lap Counter — Landscape</title>
-<style>
-  /* ... (keep your style as before, or copy from previous) ... */
-  #camSel { min-width:120px; }
-</style>
-</head>
-<body>
-<div id="rotateNotice">Please rotate your device to <strong>LANDSCAPE</strong> to begin.</div>
-<div id="app">
-  <div id="leftCam">
-    <video id="video" playsinline autoplay muted width="640" height="360" style="background:#000; display:block;"></video>
-    <canvas id="view" width="640" height="360" style="position:absolute; top:0; left:0;"></canvas>
-  </div>
-  <div id="rightUI">
-    <div class="controls">
-      <button id="enableBtn">Enable Camera</button>
-      <button id="startBtn" class="secondary" disabled>Start</button>
-      <button id="stopBtn" class="secondary" disabled>Stop</button>
-      <div class="timer" id="timer">00:00</div>
-      <span class="label">Laps</span>
-      <select id="lapsSel"></select>
-      <span class="label">Camera</span>
-      <select id="camSel"></select>
-      <button id="exportBtn" class="secondary" disabled>Export CSV</button>
-    </div>
-    <div id="status">Waiting.</div>
-    <div id="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Runner</th>
-            <th>Laps</th>
-            <th>Finish</th>
-            <th>Splits</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-<script>
-(function(){
-  // LANDSCAPE-ONLY MODE
-  function checkOrientation(){
-    const isLandscape = window.matchMedia("(orientation: landscape)").matches;
-    document.getElementById("rotateNotice").style.display = isLandscape ? "none" : "flex";
-    document.getElementById("app").style.display = isLandscape ? "flex" : "none";
-  }
-  window.addEventListener("orientationchange", checkOrientation);
-  window.addEventListener("resize", checkOrientation);
-  checkOrientation();
+<div class="controls"> 
+  <button id="enableBtn">Enable Camera</button> 
+  <button id="startBtn" class="secondary" disabled>Start</button> 
+  <button id="stopBtn" class="secondary" disabled>Stop</button> 
+  <div class="timer" id="timer">00:00</div> 
+ 
+  <label class="label-small" for="lapsSel" style="margin-left:6px">Laps</label> 
+  <select id="lapsSel"></select> 
+ 
+  <button id="exportBtn" class="secondary" disabled>Export CSV</button> 
+ 
+  <span class="spacer"></span> 
+ 
+  <label class="label-small" style="display:flex;align-items:center;gap:6px"> 
+    <input id="recToggle" type="checkbox" checked /> 
+    Auto-save video 
+  </label> 
+</div> 
+  
 
-  // DOM
-  const canvas   = document.getElementById("view");
-  const ctx      = canvas.getContext("2d",{ willReadFrequently:true });
-  const statusEl = document.getElementById("status");
-  const tbody    = document.getElementById("tbody");
-  const timerEl  = document.getElementById("timer");
-  const enableBtn= document.getElementById("enableBtn");
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn  = document.getElementById("stopBtn");
-  const exportBtn= document.getElementById("exportBtn");
-  const lapsSel  = document.getElementById("lapsSel");
-  const camSel   = document.getElementById("camSel");
-  const video    = document.getElementById("video");
+Idle. Tap “Enable Camera”.  
 
-  for(let i=1;i<=20;i++){
-    const o=document.createElement("option");
-    o.value=i; o.textContent=i;
-    if(i===4) o.selected=true;
-    lapsSel.appendChild(o);
-  }
+<div class="tableWrap"> 
+  <table> 
+    <thead> 
+    <tr> 
+      <th>Runner ID<br><span style="font-size:11px;font-weight:400">Mapped</span></th> 
+      <th>Laps</th> 
+      <th>Finish</th> 
+      <th>Splits</th> 
+    </tr> 
+    </thead> 
+    <tbody id="tbody"></tbody> 
+  </table> 
+</div> 
+ 
+<div class="footerBar"> 
+  • Printed TopCodes must be 16 cm on stiff bibs · • Codes are auto-mapped to Runner IDs 
+</div> 
+ 
 
-  // Camera selection via enumerateDevices
-  let cameras=[];
-  function populateCameraList(){
-    camSel.innerHTML='';
-    cameras.forEach((cam,i) => {
-      const opt = document.createElement('option');
-      opt.value = cam.deviceId;
-      opt.textContent = cam.label || `Camera ${i+1}`;
-      camSel.appendChild(opt);
-    });
-  }
-
-  function getCameras(){
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      cameras = devices.filter(d=>d.kind==='videoinput');
-      if(!cameras.length) setStatus("No cameras found.");
-      populateCameraList();
-    });
-  }
-  getCameras(); // initial fetch
-
-  camSel.addEventListener("focus",() => getCameras()); // Refresh on open
-
-  let currentStream=null;
-  function stopCamera(){
-    if(currentStream){
-      currentStream.getTracks().forEach(t => t.stop());
-      currentStream = null;
-    }
-    video.srcObject=null;
-    enableBtn.disabled=false;
-    cameraEnabled=false;
-  }
-
-  let cameraEnabled=false;
-
-  enableBtn.addEventListener("click", function(){
-    stopCamera(); // stop previous if any
-    const deviceId = camSel.value;
-    setStatus("Enabling camera...");
-    navigator.mediaDevices.getUserMedia({
-      video: {
-        deviceId: { exact: deviceId },
-        width: { ideal:640 },
-        height: { ideal:360 }
-      }
-    }).then(stream=>{
-      video.srcObject = stream;
-      currentStream = stream;
-      enableBtn.disabled=true;
-      startBtn.disabled=false;
-      cameraEnabled=true;
-      setStatus("Camera enabled.");
-    }).catch(err=>{
-      setStatus("Camera error: "+err.message);
-    });
-  });
-
-  camSel.addEventListener("change", function(){
-    if(cameraEnabled){
-      stopCamera();
-      enableBtn.click();
-    }
-  });
-
-  // --- Overlay detection and drawing goes here, EXAMPLE using canvas overlay (no flicker) ---
-  // Demo runner logic, red line & detection, must be implemented based on TopCodes library!
-  let counting=false, startTime=0, timerHandle=null;
-  function startTimer(){
-    startTime=Date.now();
-    timerHandle=setInterval(()=>{ timerEl.textContent = mmss(Date.now()-startTime); },1000);
-  }
-  function stopTimer(){
-    clearInterval(timerHandle); timerHandle=null;
-  }
-  function mmss(ms){
-    const s=Math.floor(ms/1000);
-    return String(Math.floor(s/60)).padStart(2,"0") +":"+String(s%60).padStart(2,"0");
-  }
-  // --- Example red line renderer (no flicker) ---
-  function drawOverlay(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    // Draw red line
-    const lineY = Math.floor(canvas.height*0.5);
-    ctx.save();
-    ctx.strokeStyle="red";
-    ctx.lineWidth=3;
-    ctx.beginPath();
-    ctx.moveTo(0,lineY);
-    ctx.lineTo(canvas.width,lineY);
-    ctx.stroke();
-    ctx.restore();
-  }
-  // --- Draw the overlay at ~30FPS ---
-  setInterval(drawOverlay,33);
-
-  // TODO: Implement actual TopCodes processing with video and canvas overlay,
-  // typically you want the video tag for video, canvas overlay for lines/labels.
-  // If TopCodes requires a canvas for frame input, draw the video frame into canvas before processing:
-  // function processFrame(){ ctx.drawImage(video,0,0,canvas.width,canvas.height); /* ... */ }
-  // setInterval(processFrame,33);
-
-  /* CSV Export, rest of logic unchanged... */
-
-  setStatus("Waiting. Choose camera, then tap 'Enable Camera'.");
-})();
-</script>
-</body>
-</html>
+ 
