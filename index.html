@@ -20,7 +20,6 @@
     overflow:hidden;
   }
 
-  /* Full-screen rotate warning */
   #rotateNotice {
     position:fixed;
     inset:0;
@@ -34,8 +33,6 @@
     z-index:9999;
     padding:20px;
   }
-
-  /* LANDSCAPE APP LAYOUT */
   #app {
     display:none; /* shown only in landscape */
     width:100vw;
@@ -44,7 +41,6 @@
     background:#000;
     display:flex;
   }
-
   #leftCam {
     position:relative;
     width:55vw;
@@ -54,8 +50,6 @@
     align-items:center;
     justify-content:center;
   }
-
-  /* Keep aspect ratio, avoid stretching and zoomy feel */
   #view {
     width:100%;
     height:auto;
@@ -63,7 +57,6 @@
     display:block;
     background:#000;
   }
-
   #rightUI {
     width:45vw;
     height:100vh;
@@ -93,7 +86,6 @@
   }
   button.secondary { background:#666 }
   button:disabled { opacity:0.4; cursor:default; }
-
   select {
     height:38px;
     padding:0 10px;
@@ -102,7 +94,6 @@
     font-weight:600;
     font-size:13px;
   }
-
   .timer {
     font-weight:700;
     font-size:18px;
@@ -110,7 +101,6 @@
     text-align:center;
     font-variant-numeric:tabular-nums;
   }
-
   #status {
     padding:8px;
     margin-bottom:10px;
@@ -145,86 +135,47 @@
     text-align:center;
   }
   tr.done { background:#e0f7e0; }
-
   .label {
     font-size:13px;
     margin-left:4px;
   }
-
-  /* Responsive tweaks: phones / small tablets in landscape */
   @media (max-width: 900px) {
-    .controls {
-      gap:6px;
-    }
-    button {
-      font-size:12px;
-      padding:8px 10px;
-    }
-    select {
-      height:34px;
-      font-size:12px;
-    }
-    .timer {
-      font-size:16px;
-      min-width:72px;
-    }
-    #status {
-      font-size:12px;
-    }
-    th, td {
-      font-size:12px;
-      padding:5px;
-    }
+    .controls { gap:6px; }
+    button { font-size:12px; padding:8px 10px;}
+    select { height:34px; font-size:12px;}
+    .timer { font-size:16px; min-width:72px;}
+    #status { font-size:12px;}
+    th, td { font-size:12px; padding:5px;}
   }
-
-  /* Larger tablets / desktops */
   @media (min-width: 1280px) {
-    button {
-      font-size:15px;
-      padding:10px 16px;
-    }
-    select {
-      font-size:14px;
-    }
-    .timer {
-      font-size:20px;
-    }
+    button { font-size:15px; padding:10px 16px;}
+    select { font-size:14px;}
+    .timer { font-size:20px;}
   }
 </style>
 </head>
-
 <body>
-
 <div id="rotateNotice">Please rotate your device to <strong>LANDSCAPE</strong> to begin.</div>
-
 <div id="app">
   <div id="leftCam">
-    <!-- 16:9 internal resolution for better aspect; still light -->
     <canvas id="view" width="640" height="360"></canvas>
   </div>
-
   <div id="rightUI">
-
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
-      <button id="stopBtn"  class="secondary" disabled>Stop</button>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
-
       <span class="label">Laps</span>
       <select id="lapsSel"></select>
-
       <span class="label">Camera</span>
       <select id="camSel">
         <option value="environment" selected>Rear</option>
         <option value="user">Front</option>
       </select>
-
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
     </div>
-
     <div id="status">Waiting.</div>
-
     <div id="tableWrap">
       <table>
         <thead>
@@ -238,50 +189,43 @@
         <tbody id="tbody"></tbody>
       </table>
     </div>
-
   </div>
 </div>
 
-<!-- Global camera patch: respect selected front/rear on all getUserMedia calls -->
+<!-- Camera patch: use "ideal" for facingMode for better compatibility -->
 <script>
 (function(){
-  // default to rear
   window._desiredFacing = "environment";
-
   function applyFacing(constraints){
     constraints = constraints || {};
     if (constraints.video === true) constraints.video = {};
     if (typeof constraints.video === "object"){
       const facing = window._desiredFacing || "environment";
-      // Make it MANDATORY instead of just "ideal"
-      constraints.video.facingMode = { exact: facing };
+      // Use 'ideal', not 'exact'
+      constraints.video.facingMode = { ideal: facing };
       constraints.video.width  = constraints.video.width  || { ideal: 640 };
       constraints.video.height = constraints.video.height || { ideal: 360 };
     }
     return constraints;
   }
-
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
     const orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = function(c){
       return orig(applyFacing(c));
     };
   }
-
   const legacy = navigator.getUserMedia;
   if (legacy){
     navigator.getUserMedia = function(c,s,e){
       return legacy.call(navigator, applyFacing(c), s, e);
     };
   }
-
   const wk = navigator.webkitGetUserMedia;
   if (wk){
     navigator.webkitGetUserMedia = function(c,s,e){
       return wk.call(navigator, applyFacing(c), s, e);
     };
   }
-
   const moz = navigator.mozGetUserMedia;
   if (moz){
     navigator.mozGetUserMedia = function(c,s,e){
@@ -290,14 +234,10 @@
   }
 })();
 </script>
-
 <!-- TopCodes library -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
-
 <script>
 (function(){
-
-/* LANDSCAPE-ONLY MODE */
 function checkOrientation(){
   const isLandscape = window.matchMedia("(orientation: landscape)").matches;
   document.getElementById("rotateNotice").style.display = isLandscape ? "none" : "flex";
@@ -307,24 +247,18 @@ window.addEventListener("orientationchange", checkOrientation);
 window.addEventListener("resize", checkOrientation);
 checkOrientation();
 
-/* iOS detection (for disabling video recording) */
 const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
-
-/* TopCode → Runner ID mapping */
 const MAP = {
-  31:1,47:2,55:3,59:4,61:5,
-  79:6,87:7,91:8,93:9,103:10,
-  107:11,109:12,115:13,117:14,121:15,
-  143:16,151:17,155:18,157:19,167:20
+  31:1,47:2,55:3,59:4,61:5,79:6,87:7,91:8,93:9,103:10,
+  107:11,109:12,115:13,117:14,121:15,143:16,151:17,155:18,157:19,167:20
 };
 function mapID(raw){ return MAP.hasOwnProperty(raw) ? MAP[raw] : null; }
 
-/* DOM */
-const canvas   = document.getElementById("view");
-const ctx      = canvas.getContext("2d",{ willReadFrequently:true });
+const canvas = document.getElementById("view");
+const ctx = canvas.getContext("2d",{ willReadFrequently:true });
 const statusEl = document.getElementById("status");
-const tbody    = document.getElementById("tbody");
-const timerEl  = document.getElementById("timer");
+const tbody = document.getElementById("tbody");
+const timerEl = document.getElementById("timer");
 const enableBtn= document.getElementById("enableBtn");
 const startBtn = document.getElementById("startBtn");
 const stopBtn  = document.getElementById("stopBtn");
@@ -332,7 +266,7 @@ const exportBtn= document.getElementById("exportBtn");
 const lapsSel  = document.getElementById("lapsSel");
 const camSel   = document.getElementById("camSel");
 
-/* Populate laps 1–20 */
+/* Laps options */
 for(let i=1;i<=20;i++){
   const o=document.createElement("option");
   o.value=i; o.textContent=i;
@@ -340,28 +274,23 @@ for(let i=1;i<=20;i++){
   lapsSel.appendChild(o);
 }
 
-/* State */
 let cameraEnabled=false;
 let counting=false;
 let startTime=0;
 let timerHandle=null;
-let recorder=null;   // used only on non-iOS
+let recorder=null;
 let chunks=[];
 const runners=new Map();
 const COOLDOWN=1200;
 
-/* Helpers */
 function setStatus(msg){
   statusEl.textContent = msg;
   console.log(msg);
 }
-
 function mmss(ms){
   const s=Math.floor(ms/1000);
-  return String(Math.floor(s/60)).padStart(2,"0")
-       +":"+String(s%60).padStart(2,"0");
+  return String(Math.floor(s/60)).padStart(2,"0") +":"+String(s%60).padStart(2,"0");
 }
-
 function ensureRunner(id){
   if(runners.has(id)) return;
   runners.set(id,{laps:[],last:0,finished:false});
@@ -374,7 +303,6 @@ function ensureRunner(id){
     <td id="splits-${id}">-</td>`;
   tbody.appendChild(tr);
 }
-
 function updateRow(id){
   const r=runners.get(id);
   const laps=r.laps.length;
@@ -385,7 +313,6 @@ function updateRow(id){
     laps ? r.laps.map(mmss).join(" | ") : "–";
   if(r.finished) document.getElementById("r-"+id).classList.add("done");
 }
-
 /* Timer */
 function startTimer(){
   startTime=Date.now();
@@ -397,10 +324,9 @@ function stopTimer(){
   clearInterval(timerHandle);
   timerHandle=null;
 }
-
 /* Recording (disabled on iOS to avoid WebKit blob errors) */
 function startRecording(){
-  if(isIOS) return; // skip recording on iOS
+  if(isIOS) return;
   chunks=[];
   const stream = canvas.captureStream ? canvas.captureStream(20) : null;
   if(!stream){ return; }
@@ -435,15 +361,19 @@ function stopRecording(){
 let frameSkip=0;
 function handleFrame(json){
   frameSkip++;
-  if(frameSkip % 2 !== 0) return; // throttle for speed
+  if(frameSkip % 2 !== 0) return;
 
   let data;
   try{ data=JSON.parse(json); }catch(e){ return; }
 
   const codes=data.topcodes || [];
-  const lineY = Math.floor(canvas.height*0.5);
+  // --- Fix flickering: clear canvas before drawing ---
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // Draw the line on top of what TopCodes already drew
+  // TopCodes will re-draw codes, then we draw our line on top
+  // NOTE: If TopCodes draws, but we get a blank frame, we still draw the red line for consistency
+
+  const lineY = Math.floor(canvas.height*0.5);
   ctx.save();
   ctx.strokeStyle="red";
   ctx.lineWidth=3;
@@ -454,10 +384,8 @@ function handleFrame(json){
   ctx.restore();
 
   if(!counting) return;
-
   const now=Date.now();
   const threshold = canvas.height/7;
-
   for(const tc of codes){
     const id=mapID(tc.code);
     if(!id) continue;
@@ -476,18 +404,23 @@ function handleFrame(json){
   }
 }
 
-/* Camera selector: update global facing preference.
-   User must re-tap "Enable Camera" after changing. */
+/* Camera selector: update global facing preference, auto-restart camera */
 camSel.addEventListener("change", () => {
   window._desiredFacing = camSel.value;  // "user" or "environment"
   setStatus(
     "Camera preference set to: " +
     camSel.value +
-    ". Tap 'Enable Camera' again. On iOS Safari, you may also need to tap the camera icon in the address bar to pick the back camera."
+    ". Re-enabling camera..."
   );
+  // If camera was enabled, auto-restart it for user convenience
+  if(cameraEnabled) {
+    TopCodes.startStopVideoScan("view"); // stop
+    setTimeout(function(){
+      enableBtn.disabled = false;
+      enableBtn.click();         // auto re-enable for new facing
+    }, 200); // slight delay for release
+  }
 });
-
-/* Buttons */
 enableBtn.addEventListener("click",()=>{
   try{
     TopCodes.startStopVideoScan("view");
@@ -498,7 +431,7 @@ enableBtn.addEventListener("click",()=>{
     setStatus(
       "Camera enabled (" +
       camSel.value +
-      "). If you still see the front camera on iOS, tap the camera icon in Safari’s address bar and choose the back camera."
+      "). If you see the wrong camera on iOS, tap the camera icon in Safari’s address bar and pick the correct camera."
     );
   }catch(e){
     console.error(e);
@@ -506,7 +439,6 @@ enableBtn.addEventListener("click",()=>{
     enableBtn.disabled=false;
   }
 });
-
 startBtn.addEventListener("click",()=>{
   if(!cameraEnabled){
     setStatus("Enable camera first.");
@@ -522,7 +454,6 @@ startBtn.addEventListener("click",()=>{
   startRecording();
   setStatus("Counting…");
 });
-
 stopBtn.addEventListener("click",()=>{
   if(!counting) return;
   counting=false;
@@ -539,24 +470,19 @@ stopBtn.addEventListener("click",()=>{
   exportBtn.disabled=false;
   setStatus("Stopped.");
 });
-
-/* CSV EXPORT – data URL (no Blob) */
 exportBtn.addEventListener("click",()=>{
   if(!runners.size){
     setStatus("No data to export.");
     return;
   }
-
   let maxL=0;
   for(const r of runners.values()){
     if(r.laps.length>maxL) maxL=r.laps.length;
   }
-
   const rows=[];
   const header=["Runner","Total Laps","Finish"];
   for(let i=1;i<=maxL;i++) header.push("Lap "+i);
   rows.push(header);
-
   for(const [id,r] of runners){
     const total=r.laps.length;
     const finish= total? mmss(r.laps[total-1]):"DNF";
@@ -566,26 +492,19 @@ exportBtn.addEventListener("click",()=>{
     }
     rows.push(row);
   }
-
   const csv=rows.map(r=>r.join(",")).join("\n");
   const encoded = encodeURIComponent(csv);
   const href = "data:text/csv;charset=utf-8," + encoded;
-
   const a=document.createElement("a");
   a.href=href;
   a.download="laps_"+Date.now()+".csv";
   document.body.appendChild(a);
   a.click();
   a.remove();
-
   setStatus("CSV exported.");
 });
-
-/* Initial status */
 setStatus("Waiting. Choose camera, then tap 'Enable Camera'.");
-
 })();
 </script>
-
 </body>
 </html>
