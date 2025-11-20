@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>TopCodes Lap Counter — Responsive</title>
+<title>TopCodes Lap Counter — Stable</title>
 <style>
 :root{
   --accent:#015871;
@@ -19,6 +19,7 @@ body{
 }
 .app{ display:grid; min-height:100vh; }
 
+/* Portrait: video top quarter, table bottom */
 @media (orientation:portrait){
   .app{
     grid-template-rows: 25vh 1fr;
@@ -30,6 +31,8 @@ body{
   .top{ grid-area: top; }
   .bottom{ grid-area: bottom; }
 }
+
+/* Landscape: video left, table right */
 @media (orientation:landscape){
   .app{
     grid-template-columns: 1fr 1fr;
@@ -72,9 +75,10 @@ button{
   border-radius:10px;
   font-weight:700;
   padding:10px 12px;
+  cursor:pointer;
 }
 button.secondary{ background:#666 }
-button:disabled{ opacity:0.5 }
+button:disabled{ opacity:0.5; cursor:default }
 select{
   height:42px;
   padding:0 10px;
@@ -156,7 +160,7 @@ tr.done{ background:#e9f6ec }
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
-      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <button id="stopBtn"  class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
 
       <label for="lapsSel"
@@ -167,10 +171,9 @@ tr.done{ background:#e9f6ec }
 
       <span class="spacer"></span>
 
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#333">
-        <input id="dummyDebug" type="checkbox" disabled />
-        Debug video (not used in this version)
-      </label>
+      <span style="font-size:11px;color:#555">
+        Aim TopCodes so they cross the red line.
+      </span>
     </div>
   </section>
 
@@ -190,12 +193,12 @@ tr.done{ background:#e9f6ec }
       </table>
     </div>
     <div class="footerBar">
-      • Use large matte TopCodes • Good lighting improves scans • Codes auto-map to runners
+      • Use large matte TopCodes • Good lighting improves scans • Codes auto-map to runners (TopCode → ID 1–20)
     </div>
   </section>
 </div>
 
-<!-- TopCodes library -->
+<!-- TopCodes library (only external dependency) -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
@@ -212,7 +215,7 @@ tr.done{ background:#e9f6ec }
   const exportBtn= document.getElementById('exportBtn');
   const lapsSel  = document.getElementById('lapsSel');
 
-  // Populate laps 1–20
+  // Populate laps 1–20 (default 4)
   for (let i=1;i<=20;i++){
     const opt=document.createElement('option');
     opt.value=i;
@@ -231,14 +234,14 @@ tr.done{ background:#e9f6ec }
   const mapCode = raw => TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
 
   // State
-  let counting   = false;
-  let startTime  = 0;
-  let timerTick  = null;
-  let lineY      = null;  // computed when first frame arrives
-  let lastCanvasW= 0;
-  let lastCanvasH= 0;
-  const COOLDOWN = 1200;  // ms between laps for same runner
-  const runners  = new Map(); // runnerID -> {laps: [ms,...], lastTs, finished}
+  let counting    = false;
+  let startTime   = 0;
+  let timerTick   = null;
+  let lineY       = null;  // computed from canvas height after first frame
+  let lastCanvasW = 0;
+  let lastCanvasH = 0;
+  const COOLDOWN  = 1200;  // ms between laps for same runner
+  const runners   = new Map(); // runnerID -> {laps: [ms,...], lastTs, finished}
 
   const setStatus = (...parts) => {
     const msg = parts.join(' ');
@@ -271,9 +274,9 @@ tr.done{ background:#e9f6ec }
   function updateRunnerRow(id){
     const r = runners.get(id);
     const lapsCount = r.laps.length;
-    document.getElementById(`laps-${id}`).textContent   = lapsCount;
-    document.getElementById(`fin-${id}`).textContent    = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
-    document.getElementById(`splits-${id}`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
+    document.getElementById(\`laps-\${id}\`).textContent   = lapsCount;
+    document.getElementById(\`fin-\${id}\`).textContent    = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
+    document.getElementById(\`splits-\${id}\`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
     if (r.finished){
       const row = document.getElementById('r-'+id);
       if (row) row.classList.add('done');
@@ -281,7 +284,7 @@ tr.done{ background:#e9f6ec }
   }
 
   function countLap(id){
-    const r = runners.get(id);
+    const r   = runners.get(id);
     const now = Date.now();
     const req = parseInt(lapsSel.value,10);
 
@@ -297,7 +300,7 @@ tr.done{ background:#e9f6ec }
 
     updateRunnerRow(id);
 
-    setStatus(`Runner ${id} → Lap ${r.laps.length}${r.finished ? ' (Finished)' : ''}`);
+    setStatus(\`Runner \${id} → Lap \${r.laps.length}\${r.finished ? ' (Finished)' : ''}\`);
   }
 
   function startTimer(){
@@ -326,18 +329,19 @@ tr.done{ background:#e9f6ec }
     }
     const tcodes = data.topcodes || [];
 
-    // Canvas size may be set by TopCodes; recompute lineY if needed
+    // TopCodes sets the canvas size to match the video feed.
+    // Recompute lineY when that happens (but we NEVER change canvas size ourselves).
     if (canvas.width !== lastCanvasW || canvas.height !== lastCanvasH){
       lastCanvasW = canvas.width  || lastCanvasW || 640;
       lastCanvasH = canvas.height || lastCanvasH || 480;
-      lineY = Math.round(lastCanvasH * 0.5);
+      lineY = Math.round(lastCanvasH * 0.5);  // midway vertically
     }
     if (lineY == null){
-      // no actual frame yet
+      // first frames may arrive before dimensions are set
       return;
     }
 
-    // Draw red line ON TOP of the video (TopCodes already drew the image)
+    // Draw red line overlay every 2nd frame (reduces work, avoids flicker)
     frameSkip++;
     if (frameSkip % 2 === 0){
       const h = canvas.height || lastCanvasH;
@@ -357,7 +361,7 @@ tr.done{ background:#e9f6ec }
 
     const now = Date.now();
     const h   = canvas.height || lastCanvasH || 480;
-    const thresholdBase = Math.max(16, h/10);
+    const thresholdBase = Math.max(16, h/10); // vertical tolerance around line
 
     for (const tc of tcodes){
       const rawCode  = tc.code;
@@ -377,7 +381,7 @@ tr.done{ background:#e9f6ec }
   // Buttons
   enableBtn.addEventListener('click', () => {
     try{
-      // KEY FIX: only pass the canvas ID; no config object
+      // Let TopCodes own the camera & canvas completely
       TopCodes.startStopVideoScan('view');
       TopCodes.setVideoFrameCallback('view', handleFrame);
 
@@ -423,7 +427,7 @@ tr.done{ background:#e9f6ec }
 
     startBtn.disabled  = false;
     stopBtn.disabled   = true;
-    exportBtn.disabled = runners.size > 0;
+    exportBtn.disabled = runners.size === 0; // enable if we have data
 
     setStatus('Stopped. You can export CSV now.');
   });
@@ -441,7 +445,7 @@ tr.done{ background:#e9f6ec }
 
     const rows = [];
     const header = ['Runner ID', 'Total Laps', 'Finish'];
-    for (let i=1;i<=maxLaps;i++) header.push(`Lap ${i}`);
+    for (let i=1;i<=maxLaps;i++) header.push(\`Lap \${i}\`);
     rows.push(header);
 
     for (const [id, r] of runners.entries()){
@@ -457,15 +461,16 @@ tr.done{ background:#e9f6ec }
     const csv = rows.map(r =>
       r.map(c => {
         const s = String(c);
-        return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;
+        return s.includes(',') ? '"' + s.replace(/"/g,'""') + '"' : s;
       }).join(',')
     ).join('\n');
 
+    // Data URL for Safari-friendly download
     const encoded = encodeURIComponent(csv);
     const href    = 'data:text/csv;charset=utf-8,' + encoded;
     const a       = document.createElement('a');
     a.href        = href;
-    a.download    = `topcodes_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+    a.download    = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
