@@ -192,7 +192,7 @@ tr.done{ background:#e9f6ec }
   </section>
 
   <section class="bottom">
-    <div class="status" id="status">Idle. Tap “Enable Camera”.</div>
+    <div class="status" id="status">Idle. Tap "Enable Camera".</div>
     <div class="tableWrap">
       <table>
         <thead>
@@ -228,6 +228,8 @@ tr.done{ background:#e9f6ec }
   var stopBtn  = document.getElementById('stopBtn');
   var exportBtn= document.getElementById('exportBtn');
   var lapsSel  = document.getElementById('lapsSel');
+
+  var cameraActive = false;
 
   // Populate laps 1..20 (default 4)
   var i;
@@ -386,6 +388,15 @@ tr.done{ background:#e9f6ec }
     }
   }
 
+  // Resize canvas to match displayed size
+  function resizeCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+  }
+
   // ===== TopCodes frame callback =====
   function handleFrame(jsonString){
     var data;
@@ -435,23 +446,40 @@ tr.done{ background:#e9f6ec }
 
   // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
+    if (cameraActive) {
+      setStatus('Camera already active.');
+      return;
+    }
+
+    // Check if getUserMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
+      return;
+    }
+
     try{
-      // TopCodes handles getUserMedia and drawing into the canvas
-      TopCodes.startStopVideoScan('view', {
-        video: { facingMode: "environment" }
-      });
+      // Resize canvas before starting camera
+      resizeCanvas();
+      
+      // TopCodes handles getUserMedia internally
+      // Just pass the canvas ID - it will request camera permissions
+      TopCodes.startStopVideoScan('view');
+      
+      // Set up the frame callback
       TopCodes.setVideoFrameCallback('view', handleFrame);
 
+      cameraActive = true;
       enableBtn.disabled = true;
       startBtn.disabled  = false;
       stopBtn.disabled   = true;
       exportBtn.disabled = true;
 
-      setStatus('Camera ready. Aim TopCodes so they cross the red line. Tap “Start” to begin.');
+      setStatus('Camera ready. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
     }catch(e){
       console.error(e);
       setStatus('Camera error: ' + (e.message || e));
       enableBtn.disabled = false;
+      cameraActive = false;
     }
   });
 
@@ -556,8 +584,12 @@ tr.done{ background:#e9f6ec }
     setStatus('CSV exported.');
   });
 
-  // Initial UI
-  setStatus('Idle. Tap “Enable Camera”. TopCodes only (no QR / barcodes).');
+  // Handle window resizing
+  window.addEventListener('resize', resizeCanvas);
+
+  // Initial setup
+  resizeCanvas();
+  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR / barcodes). Note: Camera requires HTTPS or localhost.');
 })();
 </script>
 </body>
