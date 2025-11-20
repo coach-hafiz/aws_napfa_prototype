@@ -1,42 +1,548 @@
-<div class="controls"> 
-  <button id="enableBtn">Enable Camera</button> 
-  <button id="startBtn" class="secondary" disabled>Start</button> 
-  <button id="stopBtn" class="secondary" disabled>Stop</button> 
-  <div class="timer" id="timer">00:00</div> 
- 
-  <label class="label-small" for="lapsSel" style="margin-left:6px">Laps</label> 
-  <select id="lapsSel"></select> 
- 
-  <button id="exportBtn" class="secondary" disabled>Export CSV</button> 
- 
-  <span class="spacer"></span> 
- 
-  <label class="label-small" style="display:flex;align-items:center;gap:6px"> 
-    <input id="recToggle" type="checkbox" checked /> 
-    Auto-save video 
-  </label> 
-</div> 
-  
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>TopCodes Lap Counter (Mapped IDs)</title>
 
-Idle. Tap “Enable Camera”.  
+<style>
+  :root{
+    --accent:#015871;
+    --bg:#f7f7f7;
+    --line:red;
+  }
+  *{ box-sizing:border-box }
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:#111;
+  }
 
-<div class="tableWrap"> 
-  <table> 
-    <thead> 
-    <tr> 
-      <th>Runner ID<br><span style="font-size:11px;font-weight:400">Mapped</span></th> 
-      <th>Laps</th> 
-      <th>Finish</th> 
-      <th>Splits</th> 
-    </tr> 
-    </thead> 
-    <tbody id="tbody"></tbody> 
-  </table> 
-</div> 
- 
-<div class="footerBar"> 
-  • Printed TopCodes must be 16 cm on stiff bibs · • Codes are auto-mapped to Runner IDs 
-</div> 
- 
+  /* APP GRID */
+  .app{ display:grid; min-height:100vh; }
 
- 
+  @media (orientation:portrait){
+    .app{
+      grid-template-rows:25vh 1fr;
+      grid-template-columns:1fr;
+      grid-template-areas:
+        "top"
+        "bottom";
+    }
+  }
+  @media (orientation:landscape){
+    .app{
+      grid-template-columns:1fr 1fr;
+      grid-template-rows:100vh;
+      grid-template-areas:"top bottom";
+    }
+  }
+
+  .top{ grid-area:top; position:relative; background:#000; overflow:hidden; }
+  .bottom{
+    grid-area:bottom;
+    display:grid;
+    grid-template-rows:auto 1fr auto;
+    gap:8px;
+    padding:10px;
+    min-height:0;
+  }
+
+  /* VIDEO CANVAS */
+  #view{
+    width:100%;
+    height:100%;
+    display:block;
+    background:#000;
+    touch-action:none;
+  }
+
+  /* CONTROLS OVERLAY */
+  .controls{
+    position:absolute;
+    left:0; right:0; top:0;
+    z-index:20;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    padding:8px;
+    background:linear-gradient(180deg,
+      rgba(255,255,255,0.96) 0%,
+      rgba(255,255,255,0.85) 65%,
+      rgba(255,255,255,0) 100%);
+    border-bottom:1px solid rgba(0,0,0,0.06);
+  }
+  button{
+    background:var(--accent);
+    color:#fff;
+    border:0;
+    border-radius:10px;
+    font-weight:700;
+    padding:9px 12px;
+    font-size:14px;
+  }
+  button.secondary{ background:#666 }
+  button:disabled{ opacity:0.5 }
+
+  select{
+    height:40px;
+    padding:0 10px;
+    border-radius:10px;
+    border:1px solid #ccc;
+    background:#fff;
+    font-weight:600;
+    font-size:14px;
+  }
+
+  .timer{
+    font-variant-numeric:tabular-nums;
+    font-weight:700;
+    min-width:78px;
+    text-align:center;
+  }
+
+  .spacer{ flex:1 1 auto }
+  .label-small{ font-size:12px; color:#333 }
+
+  @media (max-width:420px){
+    button{ padding:8px 9px; font-size:13px }
+    select{ height:36px; font-size:13px }
+    .timer{ min-width:66px }
+  }
+
+  /* STATUS + TABLE */
+  .status{
+    font-size:13px;
+    color:#333;
+    white-space:pre-wrap;
+    background:#fff;
+    border-radius:10px;
+    border:1px solid #eee;
+    padding:8px;
+  }
+
+  .tableWrap{
+    min-height:0;
+    background:#fff;
+    border-radius:10px;
+    border:1px solid #eee;
+    overflow:auto;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:14px;
+  }
+  thead th{
+    position:sticky;
+    top:0;
+    background:var(--accent);
+    color:#fff;
+    padding:8px;
+    z-index:1;
+  }
+  td,th{
+    padding:8px;
+    border-bottom:1px solid #f0f0f0;
+    text-align:center;
+  }
+  tr.done{ background:#e9f6ec; }
+
+  .footerBar{
+    font-size:12px;
+    color:#444;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+  }
+</style>
+</head>
+
+<body>
+<div class="app">
+
+  <!-- TOP: VIDEO + CONTROLS -->
+  <section class="top">
+    <canvas id="view" width="960" height="540"></canvas>
+
+    <div class="controls">
+      <button id="enableBtn">Enable Camera</button>
+      <button id="startBtn" class="secondary" disabled>Start</button>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <div class="timer" id="timer">00:00</div>
+
+      <label class="label-small" for="lapsSel" style="margin-left:6px">Laps</label>
+      <select id="lapsSel"></select>
+
+      <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+
+      <span class="spacer"></span>
+
+      <label class="label-small" style="display:flex;align-items:center;gap:6px">
+        <input id="recToggle" type="checkbox" checked />
+        Auto-save video
+      </label>
+    </div>
+  </section>
+
+  <!-- BOTTOM: STATUS + TABLE -->
+  <section class="bottom">
+    <div class="status" id="status">
+      Idle. Tap “Enable Camera”.
+    </div>
+
+    <div class="tableWrap">
+      <table>
+        <thead>
+        <tr>
+          <th>Runner ID<br><span style="font-size:11px;font-weight:400">Mapped</span></th>
+          <th>Laps</th>
+          <th>Finish</th>
+          <th>Splits</th>
+        </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="footerBar">
+      • Printed TopCodes must be 16 cm on stiff bibs · • Codes are auto-mapped to Runner IDs
+    </div>
+  </section>
+
+</div>
+
+<!-- ✓ TopCodes library -->
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
+
+<script>
+(function(){
+
+/* ============================
+   1. RUNNER ID MAPPING
+   ============================ */
+const TOPCODE_MAP = {
+  31:1, 47:2, 55:3, 59:4, 61:5,
+  79:6, 87:7, 91:8, 93:9, 103:10,
+  107:11, 109:12, 115:13, 117:14, 121:15,
+  143:16, 151:17, 155:18, 157:19, 167:20
+};
+
+function mapCode(raw){
+  return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
+}
+
+
+/* ============================
+   2. DOM
+   ============================ */
+const canvas   = document.getElementById('view');
+const ctx      = canvas.getContext('2d', { willReadFrequently:true });
+const statusEl = document.getElementById('status');
+const tbody    = document.getElementById('tbody');
+const timerEl  = document.getElementById('timer');
+const enableBtn= document.getElementById('enableBtn');
+const startBtn = document.getElementById('startBtn');
+const stopBtn  = document.getElementById('stopBtn');
+const exportBtn= document.getElementById('exportBtn');
+const lapsSel  = document.getElementById('lapsSel');
+const recToggle= document.getElementById('recToggle');
+
+/* Populate laps dropdown 1..20 */
+for(let i=1;i<=20;i++){
+  const o=document.createElement('option');
+  o.value=i; o.textContent=i;
+  if(i===4) o.selected=true;
+  lapsSel.appendChild(o);
+}
+
+/* ============================
+   3. STATE
+   ============================ */
+let cameraEnabled=false;
+let counting=false;
+let startTime=0;
+let timerHandle=null;
+
+const runners=new Map(); // runnerID -> {laps:[], lastCross, finished}
+const COOLDOWN=1200;
+
+let lineY = canvas.height*0.5;
+
+/* Recording */
+let recorder=null;
+let recordedChunks=[];
+
+/* ============================
+   4. HELPERS
+   ============================ */
+function setStatus(msg){
+  statusEl.textContent=msg;
+  console.log(msg);
+}
+
+function msToMMSS(ms){
+  const s=Math.floor(ms/1000);
+  const m=Math.floor(s/60);
+  const ss=s%60;
+  return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+}
+
+function ensureRunner(id){
+  if(runners.has(id)) return;
+  runners.set(id,{laps:[],lastCross:0,finished:false});
+
+  const tr=document.createElement('tr');
+  tr.id='r-'+id;
+  tr.innerHTML=`
+    <td>${id}</td>
+    <td id="laps-${id}">0</td>
+    <td id="fin-${id}">-</td>
+    <td id="splits-${id}">-</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function updateRunnerRow(id){
+  const r=runners.get(id);
+  const laps=r.laps.length;
+
+  document.getElementById('laps-'+id).textContent=laps;
+  document.getElementById('fin-'+id).textContent=
+      laps? msToMMSS(r.laps[laps-1]):'–';
+  document.getElementById('splits-'+id).textContent=
+      laps? r.laps.map(msToMMSS).join(' | '):'–';
+
+  if(r.finished){
+    document.getElementById('r-'+id).classList.add('done');
+  }
+}
+
+function countLapFor(id, now){
+  const reqLaps=parseInt(lapsSel.value,10);
+  ensureRunner(id);
+
+  const r=runners.get(id);
+  if(r.finished) return;
+  if(now-r.lastCross<COOLDOWN) return;
+
+  r.laps.push(now-startTime);
+  r.lastCross=now;
+
+  if(r.laps.length>=reqLaps){
+    r.finished=true;
+  }
+  updateRunnerRow(id);
+
+  setStatus(`Runner ${id}: Lap ${r.laps.length}` + (r.finished? " (Finished)" : ""));
+}
+
+
+/* ============================
+   5. TIMER
+   ============================ */
+function startTimer(){
+  startTime=Date.now();
+  timerEl.textContent='00:00';
+  timerHandle=setInterval(()=>{
+    timerEl.textContent=msToMMSS(Date.now()-startTime);
+  },1000);
+}
+
+function stopTimer(){
+  if(timerHandle){ clearInterval(timerHandle); timerHandle=null; }
+}
+
+/* ============================
+   6. RECORDING
+   ============================ */
+function startRecording(){
+  if(!recToggle.checked) return;
+
+  recordedChunks=[];
+  const stream = canvas.captureStream ? canvas.captureStream(30) : null;
+  if(!stream){
+    setStatus("Recording not supported.");
+    return;
+  }
+  const mime='video/webm';
+  try{
+    recorder=new MediaRecorder(stream,{mimeType:mime});
+  }catch(e){
+    recorder=null; return;
+  }
+  recorder.ondataavailable=e=>recordedChunks.push(e.data);
+  recorder.onstop=()=>{
+    if(!recordedChunks.length){
+      setStatus("No video recorded."); return;
+    }
+    const blob=new Blob(recordedChunks,{type:'video/webm'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`run_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Video saved.");
+  };
+  recorder.start();
+}
+
+function stopRecording(){
+  try{
+    if(recorder && recorder.state!=='inactive') recorder.stop();
+  }catch(e){}
+}
+
+
+/* ============================
+   7. TOPCODES CALLBACK
+   ============================ */
+function handleFrame(jsonString){
+  let data;
+  try{
+    data=JSON.parse(jsonString);
+  }catch(e){ return; }
+
+  const tcodes=data.topcodes || [];
+
+  /* Draw red line */
+  lineY = canvas.height*0.5;
+  ctx.save();
+  ctx.strokeStyle= getComputedStyle(document.documentElement)
+                    .getPropertyValue('--line').trim() || 'red';
+  ctx.lineWidth=Math.max(3, canvas.height/220);
+  ctx.beginPath();
+  ctx.moveTo(0,lineY);
+  ctx.lineTo(canvas.width,lineY);
+  ctx.stroke();
+  ctx.restore();
+
+  if(!counting) return;
+
+  const now=Date.now();
+  const thresholdBase=Math.max(16, canvas.height/10);
+
+  for(const tc of tcodes){
+    const rawCode=tc.code;
+    const runnerID = mapCode(rawCode);
+    if(!runnerID) continue; // ignore unmapped codes
+
+    const cy=tc.y;
+    const radius=tc.radius||20;
+    if(Math.abs(cy-lineY) <= Math.max(thresholdBase, radius*0.9)){
+      countLapFor(runnerID, now);
+    }
+  }
+}
+
+
+/* ============================
+   8. BUTTON HANDLERS
+   ============================ */
+enableBtn.addEventListener('click', () => {
+  try{
+    TopCodes.startStopVideoScan('view');
+    cameraEnabled=true;
+    enableBtn.disabled=true;
+    startBtn.disabled=false;
+    setStatus("Camera enabled. Codes are mapped automatically.");
+    TopCodes.setVideoFrameCallback('view', handleFrame);
+  }catch(e){
+    setStatus("Camera error: "+(e.message||e));
+    enableBtn.disabled=false;
+  }
+});
+
+startBtn.addEventListener('click', () => {
+  if(!cameraEnabled){
+    setStatus("Enable camera first.");
+    return;
+  }
+  runners.clear();
+  tbody.innerHTML='';
+
+  counting=true;
+  startTimer();
+  startRecording();
+
+  startBtn.disabled=true;
+  stopBtn.disabled=false;
+  exportBtn.disabled=true;
+
+  setStatus("Counting laps…");
+});
+
+stopBtn.addEventListener('click', () => {
+  if(!counting) return;
+
+  counting=false;
+  stopTimer();
+  stopRecording();
+
+  for(const [id,r] of runners){
+    if(!r.finished){
+      const fin=document.getElementById('fin-'+id);
+      if(fin) fin.textContent='DNF';
+    }
+  }
+
+  startBtn.disabled=false;
+  stopBtn.disabled=true;
+  exportBtn.disabled=false;
+
+  setStatus("Stopped. CSV ready.");
+});
+
+
+exportBtn.addEventListener('click', () => {
+  if(!runners.size){
+    setStatus("No data."); return;
+  }
+  let maxLaps=0;
+  for(const r of runners.values()){
+    if(r.laps.length>maxLaps) maxLaps=r.laps.length;
+  }
+
+  const rows=[];
+  const header=['Runner ID','Total Laps','Finish'];
+  for(let i=1;i<=maxLaps;i++) header.push(`Lap ${i}`);
+  rows.push(header);
+
+  for(const [id,r] of runners){
+    const total=r.laps.length;
+    const finish= total? msToMMSS(r.laps[total-1]):'DNF';
+    const row=[id,String(total),finish];
+    for(let i=0;i<maxLaps;i++){
+      row.push(r.laps[i]!=null? msToMMSS(r.laps[i]):'');
+    }
+    rows.push(row);
+  }
+
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+
+  setStatus("CSV exported.");
+});
+
+
+/* ============================
+   INITIAL
+   ============================ */
+setStatus("Idle. Tap Enable Camera.");
+
+})();
+</script>
+
+</body>
+</html>
