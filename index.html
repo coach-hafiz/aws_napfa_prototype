@@ -90,7 +90,7 @@ button{
 button.secondary{ background:#666 }
 button:disabled{ opacity:0.5; cursor:default }
 
-select{
+select,input[type=number]{
   height:42px;
   padding:0 10px;
   border-radius:10px;
@@ -163,7 +163,7 @@ tr.done{ background:#e9f6ec }
 @media (max-width:420px){
   button{ padding:8px 10px }
   .timer{ min-width:66px }
-  select{ height:38px }
+  select,input[type=number]{ height:38px }
 }
 </style>
 </head>
@@ -174,6 +174,7 @@ tr.done{ background:#e9f6ec }
 
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
+      <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
       <button id="startBtn" class="secondary" disabled>Start</button>
       <button id="stopBtn"  class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
@@ -181,7 +182,12 @@ tr.done{ background:#e9f6ec }
       <label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>
       <select id="lapsSel" aria-label="Number of laps"></select>
 
+      <label for="distanceInput" style="margin-left:6px;font-size:12px;color:#333">Run Distance (m)</label>
+      <input id="distanceInput" type="number" min="100" step="10" value="1600"
+             aria-label="Total run distance in metres" />
+
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+      <button id="summaryBtn" class="secondary" disabled>Detailed Summary</button>
 
       <span class="spacer"></span>
 
@@ -224,12 +230,19 @@ tr.done{ background:#e9f6ec }
   var tbody    = document.getElementById('tbody');
   var timerEl  = document.getElementById('timer');
   var enableBtn= document.getElementById('enableBtn');
+  var disableBtn= document.getElementById('disableBtn');
   var startBtn = document.getElementById('startBtn');
   var stopBtn  = document.getElementById('stopBtn');
   var exportBtn= document.getElementById('exportBtn');
+  var summaryBtn= document.getElementById('summaryBtn');
   var lapsSel  = document.getElementById('lapsSel');
+  var distanceInput = document.getElementById('distanceInput');
 
   var cameraActive = false;
+  var cameraStream = null;
+  var topcodesVideo = null;
+
+  var runDistanceMeters = parseFloat(distanceInput.value) || 1600;
 
   // Populate laps 1..20 (default 4)
   var i;
@@ -240,6 +253,16 @@ tr.done{ background:#e9f6ec }
     if(i===4) opt.selected=true;
     lapsSel.appendChild(opt);
   }
+
+  distanceInput.addEventListener('change', function(){
+    var v = parseFloat(distanceInput.value);
+    if (!isFinite(v) || v <= 0){
+      v = 1600;
+      distanceInput.value = '1600';
+    }
+    runDistanceMeters = v;
+    setStatus('Run distance set to ' + runDistanceMeters + ' m.');
+  });
 
   // TopCode -> Runner ID mapping (A)
   var TOPCODE_MAP = {
@@ -391,7 +414,8 @@ tr.done{ background:#e9f6ec }
   // Resize canvas to match displayed size
   function resizeCanvas(){
     var rect = canvas.getBoundingClientRect();
-    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+    if (rect.width > 0 && rect.height > 0 &&
+        (canvas.width !== rect.width || canvas.height !== rect.height)) {
       canvas.width = rect.width;
       canvas.height = rect.height;
     }
@@ -444,6 +468,19 @@ tr.done{ background:#e9f6ec }
     }
   }
 
+  function stopCamera(){
+    if (cameraStream){
+      try{
+        cameraStream.getTracks().forEach(function(track){ track.stop(); });
+      }catch(e){}
+      cameraStream = null;
+    }
+    cameraActive = false;
+    enableBtn.disabled  = false;
+    disableBtn.disabled = true;
+    setStatus('Camera stopped. You can re-enable it again.');
+  }
+
   // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
     if (cameraActive) {
@@ -459,22 +496,21 @@ tr.done{ background:#e9f6ec }
 
     // Resize canvas before starting camera
     resizeCanvas();
-    
-    // FORCE rear camera using "exact" constraint
-    var constraints = {
+
+    // Try to get rear camera first
+    var constraintsExact = {
       video: {
         facingMode: { exact: "environment" }
       }
     };
-    
-    // First, try to get rear camera with exact constraint
-    navigator.mediaDevices.getUserMedia(constraints)
+    enableBtn.disabled = true;
+
+    navigator.mediaDevices.getUserMedia(constraintsExact)
       .then(function(stream){
         setupCamera(stream, 'Rear camera active');
       })
       .catch(function(err){
         console.log('Exact rear camera failed, trying ideal...', err);
-        // Fallback to ideal if exact fails
         var fallbackConstraints = {
           video: {
             facingMode: "environment"
@@ -496,44 +532,65 @@ tr.done{ background:#e9f6ec }
   function setupCamera(stream, statusMsg){
     try {
       // Store stream for cleanup
-      window.cameraStream = stream;
-      
-      // TopCodes creates its own video element internally
-      // We need to override it after it's created
+      cameraStream = stream;
+
+      // Start TopCodes scanning on our canvas
       TopCodes.startStopVideoScan('view');
-      
+
       // Wait a moment for TopCodes to create its video element
       setTimeout(function(){
-        // Find the video element TopCodes created
+        // Guard against multiple <video> elements:
+        // Prefer a video element that isn't already tagged as our TopCodes video.
         var videos = document.getElementsByTagName('video');
-        if (videos.length > 0) {
-          var video = videos[0];
-          // Replace the stream with our rear camera stream
-          video.srcObject = stream;
-          video.play();
+        var chosen = null;
+        for (var i=0;i<videos.length;i++){
+          var v = videos[i];
+          if (!v.dataset.topcodesBound){
+            chosen = v;
+            v.dataset.topcodesBound = '1';
+            break;
+          }
         }
-        
+        if (!chosen && videos.length){
+          chosen = videos[0];
+          chosen.dataset.topcodesBound = '1';
+        }
+
+        if (chosen){
+          topcodesVideo = chosen;
+          chosen.srcObject = stream;
+          chosen.playsInline = true;
+          chosen.muted = true;
+          chosen.play().catch(function(){});
+        }
+
         TopCodes.setVideoFrameCallback('view', handleFrame);
-        
+
         cameraActive = true;
-        enableBtn.disabled = true;
-        startBtn.disabled  = false;
-        stopBtn.disabled   = true;
-        exportBtn.disabled = true;
-        
+        enableBtn.disabled  = true;
+        disableBtn.disabled = false;
+        startBtn.disabled   = false;
+        stopBtn.disabled    = true;
+        exportBtn.disabled  = true;
+        summaryBtn.disabled = true;
+
         setStatus(statusMsg + '. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
-      }, 100);
-      
+      }, 150);
+
     } catch(e) {
       console.error(e);
       setStatus('Setup error: ' + (e.message || e));
       enableBtn.disabled = false;
       cameraActive = false;
       if (stream) {
-        stream.getTracks().forEach(function(track){ track.stop(); });
+        try{ stream.getTracks().forEach(function(track){ track.stop(); }); }catch(e2){}
       }
     }
   }
+
+  disableBtn.addEventListener('click', function(){
+    stopCamera();
+  });
 
   startBtn.addEventListener('click', function(){
     if (counting) return;
@@ -548,6 +605,7 @@ tr.done{ background:#e9f6ec }
     startBtn.disabled  = true;
     stopBtn.disabled   = false;
     exportBtn.disabled = true;
+    summaryBtn.disabled= true;
 
     setStatus('Counting… TopCodes crossing the line will reduce laps left.');
   });
@@ -573,8 +631,9 @@ tr.done{ background:#e9f6ec }
     startBtn.disabled  = false;
     stopBtn.disabled   = true;
     exportBtn.disabled = Object.keys(runners).length === 0;
+    summaryBtn.disabled= Object.keys(runners).length === 0;
 
-    setStatus('Stopped. You can export CSV now.');
+    setStatus('Stopped. You can export CSV or view Detailed Summary now.');
   });
 
   exportBtn.addEventListener('click', function(){
@@ -592,18 +651,32 @@ tr.done{ background:#e9f6ec }
     }
 
     var rows = [];
-    var header = ['Runner ID','Total Laps','Finish'];
+    var header = ['Runner ID','Total Laps','Run Distance (m)','Total Distance (m)','Finish','Pace (min/km)'];
     var j;
-    for (j=1;j<=maxLaps;j++) header.push('Lap '+j);
+    for (j=1;j<=maxLaps;j++) header.push('Lap '+j+' (mm:ss)');
     rows.push(header);
+
+    var totalRunMeters = runDistanceMeters;
 
     for (idIdx=0; idIdx<ids.length; idIdx++){
       var id = ids[idIdx];
       var rr = runners[id];
       var total  = rr.totalLaps;
       var lapsDone = rr.laps.length;
-      var finish = lapsDone ? msToMMSS(rr.laps[lapsDone-1]) : 'DNF';
-      var row    = [id, String(total), finish];
+      var finishMs = lapsDone ? rr.laps[lapsDone-1] : NaN;
+      var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
+
+      var totalDist = (totalRunMeters); // total planned run distance
+      var paceStr = '';
+      if (lapsDone){
+        var totalSec = finishMs/1000;
+        var paceSecPerKm = totalSec / (totalDist/1000);
+        var paceMin = Math.floor(paceSecPerKm / 60);
+        var paceSec = Math.round(paceSecPerKm % 60);
+        paceStr = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
+      }
+
+      var row    = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStr];
       for (j=0;j<maxLaps;j++){
         row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
       }
@@ -636,8 +709,52 @@ tr.done{ background:#e9f6ec }
     setStatus('CSV exported.');
   });
 
+  function buildSummaryData(){
+    var ids = Object.keys(runners);
+    if (!ids.length) return null;
+
+    var runnersArr = [];
+    for (var k=0;k<ids.length;k++){
+      var id = ids[k];
+      var r  = runners[id];
+      runnersArr.push({
+        id: id,
+        totalLaps: r.totalLaps,
+        finished: !!r.finished,
+        splitsMs: r.laps.slice()
+      });
+    }
+
+    return {
+      createdAt: new Date().toISOString(),
+      runDistanceMeters: runDistanceMeters,
+      lapsConfig: parseInt(lapsSel.value,10),
+      runners: runnersArr
+    };
+  }
+
+  summaryBtn.addEventListener('click', function(){
+    var data = buildSummaryData();
+    if (!data){
+      setStatus('No data available for summary.');
+      return;
+    }
+    try{
+      localStorage.setItem('topcodesLapSummaryV1', JSON.stringify(data));
+      window.location.href = 'detailedsummary.html';
+    }catch(e){
+      console.error(e);
+      setStatus('Unable to save summary data. Check storage settings.');
+    }
+  });
+
   // Handle window resizing
   window.addEventListener('resize', resizeCanvas);
+
+  // Stop camera tracks when leaving the page
+  window.addEventListener('beforeunload', function(){
+    stopCamera();
+  });
 
   // Initial setup
   resizeCanvas();
