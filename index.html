@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Barcode Lap Counter — Responsive</title>
+<title>QR / Barcode Lap Counter — Responsive</title>
 <style>
 :root{
   --accent:#015871;
@@ -18,9 +18,11 @@ body{
   background:var(--bg);
   color:#111;
 }
+
+/* App grid switches by orientation */
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: top quarter for video+controls; bottom for table */
+/* Portrait: top quarter (25vh) for video+controls; bottom for table */
 @media (orientation:portrait){
   .app{
     grid-template-rows: 25vh 1fr;
@@ -61,7 +63,7 @@ body{
   touch-action:none;
 }
 
-/* Controls overlay */
+/* Controls overlay: always visible */
 .controls{
   position:absolute;
   left:0; right:0; top:0;
@@ -76,6 +78,7 @@ body{
   );
   border-bottom:1px solid rgba(0,0,0,0.06);
 }
+
 button{
   background:var(--accent);
   color:#fff;
@@ -87,6 +90,7 @@ button{
 }
 button.secondary{ background:#666 }
 button:disabled{ opacity:0.5; cursor:default }
+
 select{
   height:42px;
   padding:0 10px;
@@ -95,6 +99,7 @@ select{
   background:#fff;
   font-weight:600;
 }
+
 .timer{
   font-variant-numeric:tabular-nums;
   font-weight:700;
@@ -108,8 +113,9 @@ select{
   grid-template-rows: auto 1fr auto;
   gap:8px;
   padding:10px;
-  min-height:0;
+  min-height:0; /* allow child scrolling */
 }
+
 .status{
   font-size:13px;
   color:#333;
@@ -119,6 +125,7 @@ select{
   border-radius:10px;
   padding:8px;
 }
+
 .tableWrap{
   min-height:0;
   background:#fff;
@@ -155,6 +162,7 @@ tr.done{ background:#e9f6ec }
   color:#444;
 }
 
+/* Small screens: keep buttons readable */
 @media (max-width:420px){
   button{ padding:8px 10px }
   .timer{ min-width:66px }
@@ -172,8 +180,7 @@ tr.done{ background:#e9f6ec }
       <button id="stopBtn"  class="secondary" disabled>Stop</button>
       <div class="timer" id="timer">00:00</div>
 
-      <label for="lapsSel"
-             style="margin-left:6px;font-size:12px;color:#333">Laps</label>
+      <label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>
       <select id="lapsSel" aria-label="Number of laps"></select>
 
       <button id="exportBtn" class="secondary" disabled>Export CSV</button>
@@ -181,7 +188,7 @@ tr.done{ background:#e9f6ec }
       <span class="spacer"></span>
 
       <span style="font-size:11px;color:#555">
-        Aim barcodes so they cross the red line.
+        Aim QR/barcodes so they cross the red line.
       </span>
     </div>
   </section>
@@ -202,10 +209,13 @@ tr.done{ background:#e9f6ec }
       </table>
     </div>
     <div class="footerBar">
-      • Use clear barcodes (e.g. Code128) • Good lighting helps • Hold tags roughly facing camera (they can be angled)
+      • Use clear QR codes (or barcodes encoded as QR) • Good lighting improves scans • Tags can be angled, not perfectly flat
     </div>
   </section>
 </div>
+
+<!-- jsQR: pure JS QR reader -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
 <script>
 (function(){
@@ -231,37 +241,16 @@ tr.done{ background:#e9f6ec }
     lapsSel.appendChild(opt);
   }
 
-  // ===== BarcodeDetector =====
-  var detector = null;
-  var detecting = false;
-
-  if ('BarcodeDetector' in window){
-    try{
-      detector = new BarcodeDetector({
-        formats: [
-          'code_128',
-          'code_39',
-          'ean_13',
-          'ean_8',
-          'upc_a',
-          'upc_e',
-          'qr_code'   // keep QR as bonus
-        ]
-      });
-    }catch(e){
-      detector = null;
-      console.error(e);
-    }
-  }
-
   // ===== State =====
   var stream=null, video=null;
   var cw=640, ch=360;
   var lineY=0;
   var running=false, counting=false, startTime=0, timerTick=null;
   var frameCount=0;
-  var COOLDOWN=1200; // ms per runner
-  var runners=new Map(); // id -> {laps:[], lastTs, finished, totalLaps}
+  var COOLDOWN=1200; // ms per runner to prevent double-counts
+
+  // id -> {laps: [ms], lastTs, finished, totalLaps}
+  var runners=new Map();
 
   // ===== Helpers =====
   function setStatus(msg){
@@ -281,7 +270,6 @@ tr.done{ background:#e9f6ec }
   }
 
   function colorForRemaining(rem){
-    // Mapping from prompt
     if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0'; // turquoise
     if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50'; // green
     if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0'; // purple
@@ -289,7 +277,7 @@ tr.done{ background:#e9f6ec }
     if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3'; // blue
     if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800'; // orange
     if (rem === 1)                                         return '#F44336'; // red
-    if (rem <= 0)                                          return '#9E9E9E'; // grey (finished)
+    if (rem <= 0)                                          return '#9E9E9E'; // grey
     return '#EEEEEE'; // default
   }
 
@@ -324,10 +312,7 @@ tr.done{ background:#e9f6ec }
       lapsCell.textContent = remaining;
       var color = colorForRemaining(remaining);
       lapsCell.style.backgroundColor = color;
-      lapsCell.style.color = (remaining <= 0) ? '#fff' : '#000';
-      if (remaining === 1 || remaining <= 0){
-        lapsCell.style.color = '#fff';
-      }
+      lapsCell.style.color = (remaining <= 1) ? '#fff' : '#000';
     }
 
     if (finCell){
@@ -388,11 +373,6 @@ tr.done{ background:#e9f6ec }
       setStatus('getUserMedia not supported in this browser.');
       return;
     }
-    if (!detector){
-      setStatus('BarcodeDetector API not available in this browser.');
-      return;
-    }
-
     setStatus('Requesting camera…');
     try{
       stream = await navigator.mediaDevices.getUserMedia({
@@ -430,7 +410,7 @@ tr.done{ background:#e9f6ec }
     running = true;
     requestAnimationFrame(loop);
 
-    setStatus('Camera ready. Aim barcodes at the red line. Tap “Start” to begin.');
+    setStatus('Camera ready. Aim QR codes at the red line. Tap “Start” to begin.');
   }
 
   function resizeCanvasToLayout(){
@@ -456,11 +436,9 @@ tr.done{ background:#e9f6ec }
 
     var sx=0, sy=0, sw=vw, sh=vh;
     if (cr > vr){
-      // canvas wider than video
       sh = Math.round(vw / cr);
       sy = Math.floor((vh - sh) / 2);
     } else {
-      // canvas taller than video
       sw = Math.round(vh * cr);
       sx = Math.floor((vw - sw) / 2);
     }
@@ -469,13 +447,86 @@ tr.done{ background:#e9f6ec }
     }catch(e){}
   }
 
-  // ===== Main loop: draw frame → line → async barcode detect =====
+  // ===== Multi-QR detection using jsQR =====
+  function detectMultipleQRCodesInBand(maxCodes){
+    var bandH = Math.max(Math.floor(ch * 0.4), 120); // 40% height band
+    var y0    = Math.max(0, lineY - Math.floor(bandH/2));
+    if (y0 + bandH > ch) bandH = ch - y0;
+
+    var imgData = ctx.getImageData(0, y0, cw, bandH);
+    var data    = imgData.data;
+    var results = [];
+    var tries   = 0;
+
+    while (tries < maxCodes){
+      var qr = jsQR(data, imgData.width, imgData.height, {
+        inversionAttempts: "attemptBoth"
+      });
+      if (!qr || !qr.data) break;
+
+      results.push({
+        data: qr.data,
+        location: {
+          topLeftCorner: {
+            x: qr.location.topLeftCorner.x,
+            y: qr.location.topLeftCorner.y + y0
+          },
+          topRightCorner: {
+            x: qr.location.topRightCorner.x,
+            y: qr.location.topRightCorner.y + y0
+          },
+          bottomRightCorner: {
+            x: qr.location.bottomRightCorner.x,
+            y: qr.location.bottomRightCorner.y + y0
+          },
+          bottomLeftCorner: {
+            x: qr.location.bottomLeftCorner.x,
+            y: qr.location.bottomLeftCorner.y + y0
+          }
+        }
+      });
+
+      // Mask out the detected QR so jsQR can find another
+      var xs = [
+        qr.location.topLeftCorner.x,
+        qr.location.topRightCorner.x,
+        qr.location.bottomLeftCorner.x,
+        qr.location.bottomRightCorner.x
+      ];
+      var ys = [
+        qr.location.topLeftCorner.y,
+        qr.location.topRightCorner.y,
+        qr.location.bottomLeftCorner.y,
+        qr.location.bottomRightCorner.y
+      ];
+      var minX = Math.max(0, Math.floor(Math.min.apply(null,xs)));
+      var maxX = Math.min(imgData.width-1, Math.ceil(Math.max.apply(null,xs)));
+      var minY = Math.max(0, Math.floor(Math.min.apply(null,ys)));
+      var maxY = Math.min(imgData.height-1, Math.ceil(Math.max.apply(null,ys)));
+
+      for (var y=minY; y<=maxY; y++){
+        for (var x=minX; x<=maxX; x++){
+          var idx = (y * imgData.width + x) * 4;
+          data[idx]   = 255;
+          data[idx+1] = 255;
+          data[idx+2] = 255;
+          data[idx+3] = 255;
+        }
+      }
+
+      tries++;
+    }
+
+    return results;
+  }
+
+  // ===== Main loop: draw frame → line → detect QRs =====
   function loop(){
     if (!running) return;
 
     drawVideoCover();
 
-    // red line
+    // red start line
     ctx.strokeStyle = getComputedStyle(document.documentElement)
       .getPropertyValue('--line').trim() || 'red';
     ctx.lineWidth = Math.max(3, ch/220);
@@ -486,77 +537,55 @@ tr.done{ background:#e9f6ec }
 
     frameCount++;
 
-    if (detector && !detecting && video && video.readyState >= 2){
-      // throttle detection
-      if (frameCount % 2 === 0){
-        detecting = true;
-        detector.detect(canvas)
-          .then(handleDetections)
-          .catch(function(e){ console.error(e); })
-          .finally(function(){ detecting = false; });
+    if (video && video.readyState >= 2){
+      if (frameCount % 2 === 0){ // throttle detection
+        var qrs = detectMultipleQRCodesInBand(5); // up to 5 per frame
+
+        var threshold = Math.max(16, ch/10);
+
+        for (var i=0;i<qrs.length;i++){
+          var qr = qrs[i];
+          var pts = qr.location;
+          var cx = (pts.topLeftCorner.x + pts.topRightCorner.x +
+                    pts.bottomLeftCorner.x + pts.bottomRightCorner.x) / 4;
+          var cy = (pts.topLeftCorner.y + pts.topRightCorner.y +
+                    pts.bottomLeftCorner.y + pts.bottomRightCorner.y) / 4;
+
+          // visual feedback
+          ctx.save();
+          ctx.strokeStyle='lime';
+          ctx.lineWidth=Math.max(2, ch/360);
+          ctx.beginPath();
+          ctx.moveTo(pts.topLeftCorner.x, pts.topLeftCorner.y);
+          ctx.lineTo(pts.topRightCorner.x, pts.topRightCorner.y);
+          ctx.lineTo(pts.bottomRightCorner.x, pts.bottomRightCorner.y);
+          ctx.lineTo(pts.bottomLeftCorner.x, pts.bottomLeftCorner.y);
+          ctx.closePath();
+          ctx.stroke();
+
+          ctx.fillStyle='rgba(0,255,0,0.25)';
+          ctx.beginPath();
+          ctx.arc(cx, cy, Math.max(4, ch/200), 0, Math.PI*2);
+          ctx.fill();
+          ctx.restore();
+
+          // band around line
+          if (Math.abs(cy - lineY) <= threshold){
+            var id = String(qr.data || '').trim();
+            if (!id) continue;
+            ensureRunner(id);
+            if (counting){
+              countLap(id);
+            }
+          }
+        }
       }
     }
 
     requestAnimationFrame(loop);
   }
 
-  function handleDetections(barcodes){
-    if (!barcodes || !barcodes.length) return;
-
-    var threshold = Math.max(16, ch/10);
-
-    for (var i=0;i<barcodes.length;i++){
-      var b = barcodes[i];
-      var raw = (b.rawValue || '').trim();
-      if (!raw) continue;
-
-      var cx = 0, cy = 0, haveCenter = false;
-
-      if (b.boundingBox){
-        cx = b.boundingBox.x + b.boundingBox.width / 2;
-        cy = b.boundingBox.y + b.boundingBox.height / 2;
-        haveCenter = true;
-      } else if (b.cornerPoints && b.cornerPoints.length){
-        var sumX=0,sumY=0;
-        for (var j=0;j<b.cornerPoints.length;j++){
-          sumX += b.cornerPoints[j].x;
-          sumY += b.cornerPoints[j].y;
-        }
-        cx = sumX / b.cornerPoints.length;
-        cy = sumY / b.cornerPoints.length;
-        haveCenter = true;
-      }
-
-      if (!haveCenter) continue;
-
-      // Highlight barcode region for user feedback
-      if (b.cornerPoints && b.cornerPoints.length){
-        ctx.save();
-        ctx.strokeStyle = 'lime';
-        ctx.lineWidth   = Math.max(2, ch/360);
-        ctx.beginPath();
-        ctx.moveTo(b.cornerPoints[0].x, b.cornerPoints[0].y);
-        for (var k=1;k<b.cornerPoints.length;k++){
-          ctx.lineTo(b.cornerPoints[k].x, b.cornerPoints[k].y);
-        }
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // Check crossing line band
-      if (Math.abs(cy - lineY) <= threshold){
-        var id = raw; // use barcode content as runner ID (e.g. "1", "12", etc.)
-        if (!id) continue;
-        ensureRunner(id);
-        if (counting){
-          countLap(id);
-        }
-      }
-    }
-  }
-
-  // ===== Button handlers =====
+  // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
     enableBtn.disabled = true;
     enableCamera();
@@ -579,7 +608,7 @@ tr.done{ background:#e9f6ec }
     stopBtn.disabled   = false;
     exportBtn.disabled = true;
 
-    setStatus('Counting… barcodes crossing the line will reduce laps left.');
+    setStatus('Counting… QR codes crossing the line will reduce laps left.');
   });
 
   stopBtn.addEventListener('click', function(){
@@ -643,7 +672,7 @@ tr.done{ background:#e9f6ec }
     var href    = 'data:text/csv;charset=utf-8,' + encoded;
     var a       = document.createElement('a');
     a.href      = href;
-    a.download  = 'barcode_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    a.download  = 'qr_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -652,11 +681,7 @@ tr.done{ background:#e9f6ec }
   });
 
   // Initial UI
-  if (!('BarcodeDetector' in window)){
-    setStatus('BarcodeDetector API not available in this browser. Try recent Chrome/Edge/Safari.');
-  } else {
-    setStatus('Idle. Tap “Enable Camera”.');
-  }
+  setStatus('Idle. Tap “Enable Camera”.');
 
 })();
 </script>
