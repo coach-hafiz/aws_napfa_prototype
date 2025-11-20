@@ -170,9 +170,7 @@ tr.done{ background:#e9f6ec }
 <body>
 <div class="app">
   <section class="top">
-    <!-- Important: give canvas explicit size; TopCodes uses this -->
-    <canvas id="view" width="640" height="480"
-            aria-label="Camera view with overlay and start line"></canvas>
+    <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
 
     <div class="controls">
       <button id="enableBtn">Enable Camera</button>
@@ -194,7 +192,7 @@ tr.done{ background:#e9f6ec }
   </section>
 
   <section class="bottom">
-    <div class="status" id="status">Idle. Tap “Enable Camera”.</div>
+    <div class="status" id="status">Idle. Tap "Enable Camera".</div>
     <div class="tableWrap">
       <table>
         <thead>
@@ -214,8 +212,8 @@ tr.done{ background:#e9f6ec }
   </section>
 </div>
 
-<!-- IMPORTANT: keep this file locally next to the HTML (download from GitHub) -->
-<script src="topcodes.js"></script>
+<!-- TopCodes library -->
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
 (function(){
@@ -231,8 +229,11 @@ tr.done{ background:#e9f6ec }
   var exportBtn= document.getElementById('exportBtn');
   var lapsSel  = document.getElementById('lapsSel');
 
+  var cameraActive = false;
+
   // Populate laps 1..20 (default 4)
-  for (var i=1;i<=20;i++){
+  var i;
+  for (i=1;i<=20;i++){
     var opt=document.createElement('option');
     opt.value=i;
     opt.textContent=i;
@@ -240,7 +241,7 @@ tr.done{ background:#e9f6ec }
     lapsSel.appendChild(opt);
   }
 
-  // TopCode -> Runner ID mapping (your mapping A)
+  // TopCode -> Runner ID mapping (A)
   var TOPCODE_MAP = {
     31:1,  47:2,  55:3,  59:4,  61:5,
     79:6,  87:7,  91:8,  93:9,  103:10,
@@ -256,7 +257,7 @@ tr.done{ background:#e9f6ec }
   var counting   = false;
   var startTime  = 0;
   var timerTick  = null;
-  var lineY      = Math.round(canvas.height * 0.5); // in canvas pixels
+  var lineY      = null;  // in canvas pixels
   var COOLDOWN   = 1200;  // ms between laps for same runner
 
   // runners[id] = { laps:[], lastTs, finished, totalLaps }
@@ -320,7 +321,8 @@ tr.done{ background:#e9f6ec }
       lapsCell.textContent = remaining;
       var c = colorForRemaining(remaining);
       lapsCell.style.backgroundColor = c;
-      lapsCell.style.color = (remaining <= 1 ? '#fff' : '#000');
+      if (remaining <= 1) lapsCell.style.color = '#fff';
+      else lapsCell.style.color = '#000';
     }
 
     if (finCell){
@@ -386,6 +388,15 @@ tr.done{ background:#e9f6ec }
     }
   }
 
+  // Resize canvas to match displayed size
+  function resizeCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+  }
+
   // ===== TopCodes frame callback =====
   function handleFrame(jsonString){
     var data;
@@ -395,14 +406,14 @@ tr.done{ background:#e9f6ec }
       return;
     }
     var tcodes = data.topcodes || [];
-    var w = canvas.width;
-    var h = canvas.height;
+    var w = canvas.width  || 640;
+    var h = canvas.height || 480;
 
-    // Recompute line position in case canvas was resized
+    // Compute line every frame (in case canvas size changes)
     lineY = Math.round(h * 0.5);
-    var band = Math.max(16, h*0.10); // +/- band height
+    var band = Math.max(16, h*0.10); // +/- band around line
 
-    // draw the red line on top of the TopCodes-rendered video
+    // Draw red line on top of video frame
     ctx.save();
     var lineColor = getComputedStyle(document.documentElement)
       .getPropertyValue('--line') || 'red';
@@ -422,7 +433,10 @@ tr.done{ background:#e9f6ec }
       var runnerID = mapCode(rawCode);
       if (!runnerID) continue;
 
+      // centre of the code in canvas pixels
       var cy = tc.y;
+
+      // Only count when centre is close to the line
       if (Math.abs(cy - lineY) <= band){
         ensureRunner(runnerID);
         countLap(runnerID);
@@ -430,47 +444,99 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  // Register callback once TopCodes is available
-  function initCallback(){
-    if (!window.TopCodes){
-      setStatus('TopCodes library not loaded. Make sure topcodes.js is in the same folder.');
-      return false;
-    }
-    TopCodes.setVideoFrameCallback('view', handleFrame);
-    return true;
-  }
-
   // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
-    if (!window.TopCodes){
-      setStatus('TopCodes library not loaded. Check that topcodes.js is deployed next to this HTML.');
+    if (cameraActive) {
+      setStatus('Camera already active.');
       return;
     }
 
-    // ensure callback is set
-    initCallback();
-
-    try{
-      // Use the simple, documented API (id only)
-      TopCodes.startStopVideoScan('view');
-      enableBtn.disabled = true;
-      startBtn.disabled  = false;
-      stopBtn.disabled   = true;
-      exportBtn.disabled = true;
-      setStatus('Camera ready. Aim TopCodes so they cross the red line. Tap “Start” to begin.');
-    }catch(e){
-      console.error(e);
-      setStatus('Camera error: ' + (e.message || e));
-      enableBtn.disabled = false;
+    // Check if getUserMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
+      return;
     }
+
+    // Resize canvas before starting camera
+    resizeCanvas();
+    
+    // FORCE rear camera using "exact" constraint
+    var constraints = {
+      video: {
+        facingMode: { exact: "environment" }
+      }
+    };
+    
+    // First, try to get rear camera with exact constraint
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(function(stream){
+        setupCamera(stream, 'Rear camera active');
+      })
+      .catch(function(err){
+        console.log('Exact rear camera failed, trying ideal...', err);
+        // Fallback to ideal if exact fails
+        var fallbackConstraints = {
+          video: {
+            facingMode: "environment"
+          }
+        };
+        navigator.mediaDevices.getUserMedia(fallbackConstraints)
+          .then(function(stream){
+            setupCamera(stream, 'Camera active (may be front if rear unavailable)');
+          })
+          .catch(function(err2){
+            console.error('Camera error:', err2);
+            setStatus('Camera error: ' + err2.message + '. Make sure camera permissions are granted.');
+            enableBtn.disabled = false;
+            cameraActive = false;
+          });
+      });
   });
+
+  function setupCamera(stream, statusMsg){
+    try {
+      // Store stream for cleanup
+      window.cameraStream = stream;
+      
+      // TopCodes creates its own video element internally
+      // We need to override it after it's created
+      TopCodes.startStopVideoScan('view');
+      
+      // Wait a moment for TopCodes to create its video element
+      setTimeout(function(){
+        // Find the video element TopCodes created
+        var videos = document.getElementsByTagName('video');
+        if (videos.length > 0) {
+          var video = videos[0];
+          // Replace the stream with our rear camera stream
+          video.srcObject = stream;
+          video.play();
+        }
+        
+        TopCodes.setVideoFrameCallback('view', handleFrame);
+        
+        cameraActive = true;
+        enableBtn.disabled = true;
+        startBtn.disabled  = false;
+        stopBtn.disabled   = true;
+        exportBtn.disabled = true;
+        
+        setStatus(statusMsg + '. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+      }, 100);
+      
+    } catch(e) {
+      console.error(e);
+      setStatus('Setup error: ' + (e.message || e));
+      enableBtn.disabled = false;
+      cameraActive = false;
+      if (stream) {
+        stream.getTracks().forEach(function(track){ track.stop(); });
+      }
+    }
+  }
 
   startBtn.addEventListener('click', function(){
     if (counting) return;
-    if (!window.TopCodes){
-      setStatus('TopCodes not available. Enable camera again.');
-      return;
-    }
 
     // reset runners and table
     runners = {};
@@ -519,35 +585,37 @@ tr.done{ background:#e9f6ec }
     }
 
     var maxLaps = 0;
-    for (var k=0; k<ids.length; k++){
-      var r = runners[ids[k]];
+    var idIdx;
+    for (idIdx=0; idIdx<ids.length; idIdx++){
+      var r = runners[ids[idIdx]];
       if (r.laps.length > maxLaps) maxLaps = r.laps.length;
     }
 
     var rows = [];
     var header = ['Runner ID','Total Laps','Finish'];
-    for (var j=1;j<=maxLaps;j++) header.push('Lap '+j);
+    var j;
+    for (j=1;j<=maxLaps;j++) header.push('Lap '+j);
     rows.push(header);
 
-    for (k=0; k<ids.length; k++){
-      var id = ids[k];
+    for (idIdx=0; idIdx<ids.length; idIdx++){
+      var id = ids[idIdx];
       var rr = runners[id];
       var total  = rr.totalLaps;
       var lapsDone = rr.laps.length;
       var finish = lapsDone ? msToMMSS(rr.laps[lapsDone-1]) : 'DNF';
       var row    = [id, String(total), finish];
-      for (var j2=0;j2<maxLaps;j2++){
-        row.push(rr.laps[j2] != null ? msToMMSS(rr.laps[j2]) : '');
+      for (j=0;j<maxLaps;j++){
+        row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
       }
       rows.push(row);
     }
 
     var csv = '';
-    for (var i2=0;i2<rows.length;i2++){
-      var cols = rows[i2];
+    for (i=0;i<rows.length;i++){
+      var cols = rows[i];
       var parts = [];
-      for (var j3=0;j3<cols.length;j3++){
-        var s = String(cols[j3]);
+      for (j=0;j<cols.length;j++){
+        var s = String(cols[j]);
         if (s.indexOf(',') !== -1){
           s = '"' + s.replace(/"/g,'""') + '"';
         }
@@ -568,7 +636,12 @@ tr.done{ background:#e9f6ec }
     setStatus('CSV exported.');
   });
 
-  setStatus('Idle. Tap “Enable Camera”. TopCodes only (no QR / barcodes).');
+  // Handle window resizing
+  window.addEventListener('resize', resizeCanvas);
+
+  // Initial setup
+  resizeCanvas();
+  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR / barcodes). Note: Camera requires HTTPS or localhost.');
 })();
 </script>
 </body>
