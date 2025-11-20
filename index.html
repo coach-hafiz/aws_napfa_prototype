@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>TopCodes Lap Counter — Stable</title>
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Barcode Lap Counter — Responsive</title>
 <style>
 :root{
   --accent:#015871;
@@ -19,7 +20,7 @@ body{
 }
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: video top quarter, table bottom */
+/* Portrait: top quarter for video+controls; bottom for table */
 @media (orientation:portrait){
   .app{
     grid-template-rows: 25vh 1fr;
@@ -32,7 +33,7 @@ body{
   .bottom{ grid-area: bottom; }
 }
 
-/* Landscape: video left, table right */
+/* Landscape: left half for video+controls; right half for table */
 @media (orientation:landscape){
   .app{
     grid-template-columns: 1fr 1fr;
@@ -44,11 +45,14 @@ body{
   .bottom{ grid-area: right; height:100vh; }
 }
 
+/* Video+controls container */
 .top{
   position:relative;
   background:#000;
   overflow:hidden;
 }
+
+/* We render video + overlays into ONE canvas */
 #view{
   width:100%;
   height:100%;
@@ -56,16 +60,20 @@ body{
   background:#000;
   touch-action:none;
 }
+
+/* Controls overlay */
 .controls{
   position:absolute;
   left:0; right:0; top:0;
   z-index:20;
   display:flex; gap:8px; align-items:center; flex-wrap:wrap;
   padding:8px;
-  background:linear-gradient(180deg,
+  background:linear-gradient(
+    180deg,
     rgba(255,255,255,0.95) 0%,
     rgba(255,255,255,0.80) 90%,
-    rgba(255,255,255,0) 100%);
+    rgba(255,255,255,0) 100%
+  );
   border-bottom:1px solid rgba(0,0,0,0.06);
 }
 button{
@@ -94,6 +102,7 @@ select{
 }
 .spacer{ flex:1 1 auto }
 
+/* Bottom pane: table + status */
 .bottom{
   display:grid;
   grid-template-rows: auto 1fr auto;
@@ -172,7 +181,7 @@ tr.done{ background:#e9f6ec }
       <span class="spacer"></span>
 
       <span style="font-size:11px;color:#555">
-        Aim TopCodes so they cross the red line.
+        Aim barcodes so they cross the red line.
       </span>
     </div>
   </section>
@@ -184,7 +193,7 @@ tr.done{ background:#e9f6ec }
         <thead>
         <tr>
           <th>Runner ID</th>
-          <th>Laps</th>
+          <th>Laps Left</th>
           <th>Finish</th>
           <th>Splits (mm:ss, …)</th>
         </tr>
@@ -193,16 +202,14 @@ tr.done{ background:#e9f6ec }
       </table>
     </div>
     <div class="footerBar">
-      • Use large matte TopCodes • Good lighting improves scans • Codes auto-map to runners (TopCode → ID 1–20)
+      • Use clear barcodes (e.g. Code128) • Good lighting helps • Hold tags roughly facing camera (they can be angled)
     </div>
   </section>
 </div>
 
-<!-- TopCodes library (only external dependency) -->
-<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
-
 <script>
 (function(){
+  // ===== DOM =====
   var canvas   = document.getElementById('view');
   var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
@@ -215,7 +222,7 @@ tr.done{ background:#e9f6ec }
   var exportBtn= document.getElementById('exportBtn');
   var lapsSel  = document.getElementById('lapsSel');
 
-  // Populate laps 1–20 (default 4)
+  // Populate laps 1..20 (default 4)
   for (var i=1;i<=20;i++){
     var opt=document.createElement('option');
     opt.value=i;
@@ -224,27 +231,39 @@ tr.done{ background:#e9f6ec }
     lapsSel.appendChild(opt);
   }
 
-  // TopCode → Runner ID mapping
-  var TOPCODE_MAP = {
-    31:1,47:2,55:3,59:4,61:5,
-    79:6,87:7,91:8,93:9,103:10,
-    107:11,109:12,115:13,117:14,121:15,
-    143:16,151:17,155:18,157:19,167:20
-  };
-  function mapCode(raw){
-    return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
+  // ===== BarcodeDetector =====
+  var detector = null;
+  var detecting = false;
+
+  if ('BarcodeDetector' in window){
+    try{
+      detector = new BarcodeDetector({
+        formats: [
+          'code_128',
+          'code_39',
+          'ean_13',
+          'ean_8',
+          'upc_a',
+          'upc_e',
+          'qr_code'   // keep QR as bonus
+        ]
+      });
+    }catch(e){
+      detector = null;
+      console.error(e);
+    }
   }
 
-  // State
-  var counting    = false;
-  var startTime   = 0;
-  var timerTick   = null;
-  var lineY       = null;  // computed from canvas height after first frame
-  var lastCanvasW = 0;
-  var lastCanvasH = 0;
-  var COOLDOWN    = 1200;  // ms between laps for same runner
-  var runners     = new Map(); // runnerID -> {laps: [ms,...], lastTs, finished}
+  // ===== State =====
+  var stream=null, video=null;
+  var cw=640, ch=360;
+  var lineY=0;
+  var running=false, counting=false, startTime=0, timerTick=null;
+  var frameCount=0;
+  var COOLDOWN=1200; // ms per runner
+  var runners=new Map(); // id -> {laps:[], lastTs, finished, totalLaps}
 
+  // ===== Helpers =====
   function setStatus(msg){
     statusEl.textContent = msg;
     console.log(msg);
@@ -257,41 +276,80 @@ tr.done{ background:#e9f6ec }
     return String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
   }
 
+  function safeKey(id){
+    return String(id).replace(/[^a-zA-Z0-9_-]/g,'_');
+  }
+
+  function colorForRemaining(rem){
+    // Mapping from prompt
+    if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0'; // turquoise
+    if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50'; // green
+    if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0'; // purple
+    if (rem === 17)                                        return '#CDDC39'; // lime
+    if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3'; // blue
+    if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800'; // orange
+    if (rem === 1)                                         return '#F44336'; // red
+    if (rem <= 0)                                          return '#9E9E9E'; // grey (finished)
+    return '#EEEEEE'; // default
+  }
+
   function ensureRunner(id){
     if (!runners.has(id)){
-      runners.set(id, { laps:[], lastTs:0, finished:false });
+      var total = parseInt(lapsSel.value,10);
+      runners.set(id, { laps:[], lastTs:0, finished:false, totalLaps: total });
+
+      var safe = safeKey(id);
       var tr = document.createElement('tr');
-      tr.id = 'r-'+id;
+      tr.id = 'r-' + safe;
       tr.innerHTML =
         '<td>'+id+'</td>'+
-        '<td id="laps-'+id+'">0</td>'+
-        '<td id="fin-'+id+'">-</td>'+
-        '<td id="splits-'+id+'">-</td>';
+        '<td id="laps-'+safe+'">'+total+'</td>'+
+        '<td id="fin-'+safe+'">-</td>'+
+        '<td id="splits-'+safe+'">-</td>';
       tbody.appendChild(tr);
     }
   }
 
   function updateRunnerRow(id){
     var r = runners.get(id);
-    var lapsCount = r.laps.length;
-    var lapsCell   = document.getElementById('laps-'+id);
-    var finCell    = document.getElementById('fin-'+id);
-    var splitsCell = document.getElementById('splits-'+id);
+    var safe = safeKey(id);
+    var lapsDone = r.laps.length;
+    var remaining = Math.max(r.totalLaps - lapsDone, 0);
 
-    if (lapsCell)   lapsCell.textContent   = lapsCount;
-    if (finCell)    finCell.textContent    = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';
-    if (splitsCell) splitsCell.textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';
+    var lapsCell   = document.getElementById('laps-'+safe);
+    var finCell    = document.getElementById('fin-'+safe);
+    var splitsCell = document.getElementById('splits-'+safe);
+
+    if (lapsCell){
+      lapsCell.textContent = remaining;
+      var color = colorForRemaining(remaining);
+      lapsCell.style.backgroundColor = color;
+      lapsCell.style.color = (remaining <= 0) ? '#fff' : '#000';
+      if (remaining === 1 || remaining <= 0){
+        lapsCell.style.color = '#fff';
+      }
+    }
+
+    if (finCell){
+      finCell.textContent = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : '-';
+      if (r.finished && remaining === 0){
+        finCell.style.fontWeight = '700';
+      }
+    }
+
+    if (splitsCell){
+      splitsCell.textContent = lapsDone ? r.laps.map(msToMMSS).join(' | ') : '-';
+    }
 
     if (r.finished){
-      var row = document.getElementById('r-'+id);
+      var row = document.getElementById('r-'+safe);
       if (row) row.classList.add('done');
     }
   }
 
   function countLap(id){
-    var r   = runners.get(id);
     var now = Date.now();
-    var req = parseInt(lapsSel.value,10);
+    var r   = runners.get(id);
 
     if (r.finished) return;
     if (now - r.lastTs < COOLDOWN) return;
@@ -299,13 +357,14 @@ tr.done{ background:#e9f6ec }
     r.laps.push(now - startTime);
     r.lastTs = now;
 
-    if (r.laps.length >= req){
+    if (r.laps.length >= r.totalLaps){
       r.finished = true;
     }
 
     updateRunnerRow(id);
 
-    setStatus('Runner '+id+' → Lap '+r.laps.length+(r.finished ? ' (Finished)' : ''));
+    var remaining = Math.max(r.totalLaps - r.laps.length, 0);
+    setStatus('Runner '+id+' → laps left: '+remaining+(r.finished ? ' (Finished)' : ''));
   }
 
   function startTimer(){
@@ -323,89 +382,193 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  // TopCodes frame callback
-  var frameSkip = 0;
-  function handleFrame(jsonString){
-    var data;
-    try {
-      data = JSON.parse(jsonString);
-    } catch(e){
+  // ===== Camera =====
+  async function enableCamera(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('getUserMedia not supported in this browser.');
       return;
     }
-    var tcodes = data.topcodes || [];
-
-    // TopCodes sets the canvas size to match the video feed.
-    // Recompute lineY when that happens (but we NEVER change canvas size ourselves).
-    if (canvas.width !== lastCanvasW || canvas.height !== lastCanvasH){
-      lastCanvasW = canvas.width  || lastCanvasW || 640;
-      lastCanvasH = canvas.height || lastCanvasH || 480;
-      lineY = Math.round(lastCanvasH * 0.5);  // midway vertically
-    }
-    if (lineY == null){
-      // first frames may arrive before dimensions are set
+    if (!detector){
+      setStatus('BarcodeDetector API not available in this browser.');
       return;
     }
 
-    // Draw red line overlay every 2nd frame (reduces work, avoids flicker)
-    frameSkip++;
-    if (frameSkip % 2 === 0){
-      var h = canvas.height || lastCanvasH;
-      var w = canvas.width  || lastCanvasW;
-      ctx.save();
-      var lineColor = getComputedStyle(document.documentElement)
-        .getPropertyValue('--line').trim() || 'red';
-      ctx.strokeStyle = lineColor;
-      ctx.lineWidth = Math.max(3, h/220);
-      ctx.beginPath();
-      ctx.moveTo(0, lineY);
-      ctx.lineTo(w, lineY);
-      ctx.stroke();
-      ctx.restore();
+    setStatus('Requesting camera…');
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:{ ideal:'environment' },
+          width:{ ideal:640 },
+          height:{ ideal:360 }
+        },
+        audio:false
+      });
+    }catch(e){
+      setStatus('Camera error: '+(e.message || e));
+      return;
     }
 
-    if (!counting) return;
+    video = document.createElement('video');
+    video.srcObject = stream;
+    video.playsInline = true;
+    video.muted = true;
 
-    var now = Date.now();
-    var h2  = canvas.height || lastCanvasH || 480;
-    var thresholdBase = Math.max(16, h2/10); // vertical tolerance around line
+    try { await video.play(); } catch(e){}
 
-    for (var i=0;i<tcodes.length;i++){
-      var tc = tcodes[i];
-      var rawCode  = tc.code;
-      var runnerID = mapCode(rawCode);
-      if (!runnerID) continue;
+    await new Promise(function(resolve){
+      if (video.readyState >= 2) resolve();
+      else video.onloadedmetadata = resolve;
+    });
 
-      var cy     = tc.y;
-      var radius = tc.radius || 20;
+    resizeCanvasToLayout();
 
-      if (Math.abs(cy - lineY) <= Math.max(thresholdBase, radius*0.9)){
-        ensureRunner(runnerID);
-        countLap(runnerID);
+    enableBtn.disabled = true;
+    startBtn.disabled  = false;
+    stopBtn.disabled   = true;
+    exportBtn.disabled = true;
+
+    running = true;
+    requestAnimationFrame(loop);
+
+    setStatus('Camera ready. Aim barcodes at the red line. Tap “Start” to begin.');
+  }
+
+  function resizeCanvasToLayout(){
+    var rect = canvas.getBoundingClientRect();
+    var dpr  = window.devicePixelRatio || 1;
+    cw = Math.max(320, Math.floor(rect.width * dpr));
+    ch = Math.max(240, Math.floor(rect.height * dpr));
+    canvas.width  = cw;
+    canvas.height = ch;
+    lineY = Math.round(ch * 0.5);
+  }
+  window.addEventListener('resize', resizeCanvasToLayout);
+
+  function drawVideoCover(){
+    if (!video || video.readyState < 2){
+      ctx.clearRect(0,0,cw,ch);
+      return;
+    }
+    var vw = video.videoWidth  || 640;
+    var vh = video.videoHeight || 360;
+    var vr = vw / vh;
+    var cr = cw / ch;
+
+    var sx=0, sy=0, sw=vw, sh=vh;
+    if (cr > vr){
+      // canvas wider than video
+      sh = Math.round(vw / cr);
+      sy = Math.floor((vh - sh) / 2);
+    } else {
+      // canvas taller than video
+      sw = Math.round(vh * cr);
+      sx = Math.floor((vw - sw) / 2);
+    }
+    try{
+      ctx.drawImage(video, sx,sy,sw,sh, 0,0,cw,ch);
+    }catch(e){}
+  }
+
+  // ===== Main loop: draw frame → line → async barcode detect =====
+  function loop(){
+    if (!running) return;
+
+    drawVideoCover();
+
+    // red line
+    ctx.strokeStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue('--line').trim() || 'red';
+    ctx.lineWidth = Math.max(3, ch/220);
+    ctx.beginPath();
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(cw, lineY);
+    ctx.stroke();
+
+    frameCount++;
+
+    if (detector && !detecting && video && video.readyState >= 2){
+      // throttle detection
+      if (frameCount % 2 === 0){
+        detecting = true;
+        detector.detect(canvas)
+          .then(handleDetections)
+          .catch(function(e){ console.error(e); })
+          .finally(function(){ detecting = false; });
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function handleDetections(barcodes){
+    if (!barcodes || !barcodes.length) return;
+
+    var threshold = Math.max(16, ch/10);
+
+    for (var i=0;i<barcodes.length;i++){
+      var b = barcodes[i];
+      var raw = (b.rawValue || '').trim();
+      if (!raw) continue;
+
+      var cx = 0, cy = 0, haveCenter = false;
+
+      if (b.boundingBox){
+        cx = b.boundingBox.x + b.boundingBox.width / 2;
+        cy = b.boundingBox.y + b.boundingBox.height / 2;
+        haveCenter = true;
+      } else if (b.cornerPoints && b.cornerPoints.length){
+        var sumX=0,sumY=0;
+        for (var j=0;j<b.cornerPoints.length;j++){
+          sumX += b.cornerPoints[j].x;
+          sumY += b.cornerPoints[j].y;
+        }
+        cx = sumX / b.cornerPoints.length;
+        cy = sumY / b.cornerPoints.length;
+        haveCenter = true;
+      }
+
+      if (!haveCenter) continue;
+
+      // Highlight barcode region for user feedback
+      if (b.cornerPoints && b.cornerPoints.length){
+        ctx.save();
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth   = Math.max(2, ch/360);
+        ctx.beginPath();
+        ctx.moveTo(b.cornerPoints[0].x, b.cornerPoints[0].y);
+        for (var k=1;k<b.cornerPoints.length;k++){
+          ctx.lineTo(b.cornerPoints[k].x, b.cornerPoints[k].y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Check crossing line band
+      if (Math.abs(cy - lineY) <= threshold){
+        var id = raw; // use barcode content as runner ID (e.g. "1", "12", etc.)
+        if (!id) continue;
+        ensureRunner(id);
+        if (counting){
+          countLap(id);
+        }
       }
     }
   }
 
-  // Buttons
+  // ===== Button handlers =====
   enableBtn.addEventListener('click', function(){
-    try{
-      // Let TopCodes own the camera & canvas completely
-      TopCodes.startStopVideoScan('view');
-      TopCodes.setVideoFrameCallback('view', handleFrame);
-
-      enableBtn.disabled = true;
-      startBtn.disabled  = false;
-      stopBtn.disabled   = true;
-      exportBtn.disabled = true;
-
-      setStatus('Camera enabled. Aim TopCodes at the red line. Tap “Start” to begin timing.');
-    }catch(e){
-      console.error(e);
-      setStatus('Camera error: ' + (e.message || e));
-      enableBtn.disabled = false;
-    }
+    enableBtn.disabled = true;
+    enableCamera();
   });
 
   startBtn.addEventListener('click', function(){
+    if (!stream){
+      setStatus('Enable camera first.');
+      return;
+    }
+    if (counting) return;
+
     runners.clear();
     tbody.innerHTML = '';
 
@@ -416,7 +579,7 @@ tr.done{ background:#e9f6ec }
     stopBtn.disabled   = false;
     exportBtn.disabled = true;
 
-    setStatus('Counting laps…');
+    setStatus('Counting… barcodes crossing the line will reduce laps left.');
   });
 
   stopBtn.addEventListener('click', function(){
@@ -427,7 +590,8 @@ tr.done{ background:#e9f6ec }
     // Mark unfinished as DNF
     runners.forEach(function(r, id){
       if (!r.finished){
-        var finCell = document.getElementById('fin-'+id);
+        var safe = safeKey(id);
+        var finCell = document.getElementById('fin-'+safe);
         if (finCell) finCell.textContent = 'DNF';
       }
     });
@@ -451,13 +615,14 @@ tr.done{ background:#e9f6ec }
     });
 
     var rows = [];
-    var header = ['Runner ID', 'Total Laps', 'Finish'];
+    var header = ['Runner ID','Total Laps','Finish'];
     for (var i=1;i<=maxLaps;i++) header.push('Lap '+i);
     rows.push(header);
 
     runners.forEach(function(r, id){
-      var total  = r.laps.length;
-      var finish = total ? msToMMSS(r.laps[total-1]) : 'DNF';
+      var total  = r.totalLaps;
+      var lapsDone = r.laps.length;
+      var finish = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : 'DNF';
       var row    = [id, String(total), finish];
       for (var j=0;j<maxLaps;j++){
         row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
@@ -468,16 +633,17 @@ tr.done{ background:#e9f6ec }
     var csv = rows.map(function(r){
       return r.map(function(c){
         var s = String(c);
-        return s.indexOf(',') !== -1 ? '"' + s.replace(/"/g,'""') + '"' : s;
+        return (s.indexOf(',') !== -1)
+          ? '"' + s.replace(/"/g,'""') + '"'
+          : s;
       }).join(',');
     }).join('\n');
 
-    // Data URL for Safari-friendly download
     var encoded = encodeURIComponent(csv);
     var href    = 'data:text/csv;charset=utf-8,' + encoded;
     var a       = document.createElement('a');
     a.href      = href;
-    a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    a.download  = 'barcode_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -486,7 +652,12 @@ tr.done{ background:#e9f6ec }
   });
 
   // Initial UI
-  setStatus('Idle. Tap “Enable Camera”.');
+  if (!('BarcodeDetector' in window)){
+    setStatus('BarcodeDetector API not available in this browser. Try recent Chrome/Edge/Safari.');
+  } else {
+    setStatus('Idle. Tap “Enable Camera”.');
+  }
+
 })();
 </script>
 </body>
