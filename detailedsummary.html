@@ -2,22 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Run Feedback — Detailed Summary</title>
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>TopCodes Lap Counter</title>
 <style>
 :root{
   --accent:#015871;
-  --bg:#f6f7f9;
-  --card:#ffffff;
-  --muted:#6b7280;
-  --good:#16a34a;
-  --warn:#f59e0b;
-  --bad:#ef4444;
-  --line:#e5e7eb;
-  --shadow: 0 10px 22px rgba(0,0,0,.08);
+  --bg:#f7f7f7;
+  --line:red;
 }
-
-*{ box-sizing:border-box; }
+*{ box-sizing:border-box }
 body{
   margin:0;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
@@ -25,924 +19,858 @@ body{
   color:#111;
 }
 
-header{
-  position:sticky;
-  top:0;
-  z-index:10;
-  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92));
-  border-bottom:1px solid var(--line);
-  backdrop-filter: blur(8px);
-}
-.headerInner{
-  max-width:1100px;
-  margin:0 auto;
-  padding:12px 14px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-.brand{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  min-width:240px;
-}
-.badge{
-  width:38px;height:38px;
-  border-radius:12px;
-  background:var(--accent);
-  color:#fff;
-  display:grid;
-  place-items:center;
-  font-weight:900;
-}
-h1{
-  font-size:16px;
-  margin:0;
-  line-height:1.1;
-}
-.sub{
-  font-size:12px;
-  color:var(--muted);
-  margin:0;
-}
-.controls{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex:1 1 auto;
-  justify-content:flex-end;
-  flex-wrap:wrap;
-}
-select, button{
-  height:40px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#fff;
-  padding:0 12px;
-  font-weight:700;
-}
-button{
-  cursor:pointer;
-  border:0;
-  background:var(--accent);
-  color:#fff;
-}
-button.secondary{
-  background:#6b7280;
+.app{ display:grid; min-height:100vh; }
+
+/* Portrait: make camera view BIGGER */
+@media (orientation:portrait){
+  .app{
+    grid-template-rows: 62vh 1fr;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "top"
+      "bottom";
+  }
+  .top{ grid-area: top; }
+  .bottom{ grid-area: bottom; }
 }
 
-main{
-  max-width:1100px;
-  margin:0 auto;
-  padding:14px;
-  display:grid;
-  grid-template-columns: 1.15fr .85fr;
-  gap:14px;
-}
-@media (max-width:980px){
-  main{ grid-template-columns:1fr; }
-  .controls{ justify-content:flex-start; }
-  .brand{ min-width:unset; }
+/* Landscape: keep split view */
+@media (orientation:landscape){
+  .app{
+    grid-template-columns: 1.15fr 0.85fr;
+    grid-template-rows: 100vh;
+    grid-template-areas:
+      "left right";
+  }
+  .top{ grid-area: left; height:100vh; }
+  .bottom{ grid-area: right; height:100vh; }
 }
 
-.card{
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:16px;
-  box-shadow: var(--shadow);
+.top{
+  position:relative;
+  background:#000;
   overflow:hidden;
 }
-.cardHeader{
-  padding:12px 14px;
-  border-bottom:1px solid var(--line);
+
+#view{
+  width:100%;
+  height:100%;
+  display:block;
+  background:#000;
+  touch-action:none;
+  /* Transform is toggled in JS to fix “back camera reversed” */
+  transform-origin:center center;
+}
+
+/* Controls overlay */
+.controls{
+  position:absolute;
+  left:0; right:0; top:0;
+  z-index:20;
   display:flex;
-  justify-content:space-between;
-  gap:10px;
-  align-items:flex-start;
-}
-.cardTitle{
-  margin:0;
-  font-size:14px;
-}
-.cardHint{
-  margin:2px 0 0 0;
-  font-size:12px;
-  color:var(--muted);
-}
-.cardBody{ padding:12px 14px; }
-
-.grid2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-@media (max-width:620px){
-  .grid2{ grid-template-columns:1fr; }
+  flex-direction:column;
+  gap:4px;
+  padding:8px;
+  background:linear-gradient(
+    180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.80) 80%,
+    rgba(255,255,255,0) 100%
+  );
+  border-bottom:1px solid rgba(0,0,0,0.06);
 }
 
-.bigNumber{
-  font-size:28px;
-  font-weight:900;
-  letter-spacing:-0.02em;
-  margin:0;
+.controls-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  width:100%;
 }
-.smallLabel{
-  margin:0;
-  color:var(--muted);
-  font-size:12px;
+
+button{
+  background:var(--accent);
+  color:#fff;
+  border:0;
+  border-radius:10px;
+  font-weight:700;
+  padding:10px 12px;
+  cursor:pointer;
+}
+button.secondary{ background:#666 }
+button:disabled{ opacity:0.5; cursor:default }
+
+select,input[type=number]{
+  height:42px;
+  padding:0 10px;
+  border-radius:10px;
+  border:1px solid #ccc;
+  background:#fff;
   font-weight:600;
 }
 
-.pillRow{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:8px;
+.timer{
+  font-variant-numeric:tabular-nums;
+  font-weight:700;
+  min-width:78px;
 }
-.pill{
-  font-size:12px;
-  font-weight:800;
-  padding:6px 10px;
-  border-radius:999px;
-  border:1px solid var(--line);
-  background:#fff;
-}
-.pill.good{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.08); color:#0f5f2c; }
-.pill.warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.10); color:#7a4b00; }
-.pill.bad { border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.10); color:#7a0c0c; }
+.spacer{ flex:1 1 auto }
 
-.bar{
-  height:10px;
-  background:#eef2f7;
-  border-radius:999px;
-  overflow:hidden;
-  border:1px solid rgba(0,0,0,.04);
-}
-.bar > div{
-  height:100%;
-  width:0%;
-  background:var(--accent);
-  border-radius:999px;
-}
-
-.kpi{
-  display:flex;
-  gap:12px;
-  align-items:center;
-}
-.kpi .icon{
-  width:42px;height:42px;
-  border-radius:14px;
+.bottom{
   display:grid;
-  place-items:center;
-  font-weight:900;
-  color:#fff;
-  background:var(--accent);
-}
-.kpi .text{
-  flex:1 1 auto;
-  min-width:0;
-}
-
-.hr{ height:1px; background:var(--line); margin:12px 0; }
-
-.sparkWrap{
-  border:1px solid var(--line);
-  border-radius:14px;
+  grid-template-rows: auto 1fr auto;
+  gap:8px;
   padding:10px;
+  min-height:0;
+}
+.status{
+  font-size:13px;
+  color:#333;
+  white-space:pre-wrap;
   background:#fff;
+  border:1px solid #eee;
+  border-radius:10px;
+  padding:8px;
 }
-.sparkTitle{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:10px;
-  margin-bottom:6px;
+.tableWrap{
+  min-height:0;
+  background:#fff;
+  border:1px solid #eee;
+  border-radius:10px;
+  overflow:auto;
 }
-.sparkTitle b{ font-size:13px; }
-.sparkTitle span{ font-size:12px; color:var(--muted); }
-
 table{
   width:100%;
   border-collapse:collapse;
-  font-size:13px;
+  font-size:14px;
 }
-th,td{
-  padding:10px 8px;
-  border-bottom:1px solid #f1f5f9;
-  text-align:center;
-}
-th{
-  color:#fff;
-  background:var(--accent);
+thead th{
   position:sticky;
   top:0;
+  background:var(--accent);
+  color:#fff;
+  padding:8px;
+  z-index:1;
 }
-tbody tr:nth-child(even){ background:#fafafa; }
-tbody tr.me{ outline:2px solid rgba(1,88,113,.22); outline-offset:-2px; background:rgba(1,88,113,.06); }
+td,th{
+  padding:8px;
+  border-bottom:1px solid #f0f0f0;
+  text-align:center;
+}
+tr.done{ background:#e9f6ec }
 
-.small{
+.footerBar{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
   font-size:12px;
-  color:var(--muted);
+  color:#444;
 }
 
-.callout{
-  border:1px dashed rgba(1,88,113,.35);
-  background:rgba(1,88,113,.06);
-  border-radius:14px;
-  padding:12px;
+/* Small screens */
+@media (max-width:420px){
+  button{ padding:8px 10px }
+  .timer{ min-width:66px }
+  select,input[type=number]{ height:38px }
 }
-.callout h3{
-  margin:0 0 6px 0;
-  font-size:13px;
-}
-.callout p{
-  margin:0;
-  font-size:13px;
-  color:#0f172a;
-}
-
-.q{
-  display:grid;
-  gap:10px;
-}
-.q .item{
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px 12px;
-  background:#fff;
-}
-.q .item b{
-  display:block;
-  font-size:13px;
-  margin-bottom:4px;
-}
-.q .item span{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-}
-
-footer{
-  max-width:1100px;
-  margin:0 auto;
-  padding:10px 14px 24px 14px;
-  color:var(--muted);
-  font-size:12px;
-}
-
-.notice{
-  max-width:900px;
-  margin:16px auto;
-  padding:14px;
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:16px;
-  box-shadow:var(--shadow);
-}
-
-a{ color:inherit; }
 </style>
 </head>
 <body>
-
-<header>
-  <div class="headerInner">
-    <div class="brand">
-      <div class="badge">R</div>
-      <div>
-        <h1>Run Feedback</h1>
-        <p class="sub" id="metaLine">Loading…</p>
-      </div>
-    </div>
+<div class="app">
+  <section class="top">
+    <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
 
     <div class="controls">
-      <label class="small" for="runnerSel" style="font-weight:800;color:#111;">View</label>
-      <select id="runnerSel" aria-label="Select runner"></select>
-      <button id="shareBtn" class="secondary" type="button">Copy Link</button>
-      <button id="clearBtn" type="button">Clear Data</button>
-    </div>
-  </div>
-</header>
+      <div class="controls-row">
+        <button id="enableBtn">Enable Camera</button>
+        <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
 
-<div id="noData" class="notice" style="display:none;">
-  <b>No run data found.</b>
-  <div class="small" style="margin-top:6px;">
-    Go back to the lap counter page, press <b>Stop</b>, then <b>Detailed Summary</b>.
-  </div>
-</div>
+        <button id="swapBtn" class="secondary" disabled>Switch: Back</button>
 
-<main id="app" style="display:none;">
-  <!-- LEFT: runner feedback -->
-  <section class="card">
-    <div class="cardHeader">
-      <div>
-        <p class="cardTitle" id="runnerTitle">Runner</p>
-        <p class="cardHint" id="runnerHint">Simple feedback you can use next run.</p>
-      </div>
-      <div class="pill" id="finishPill">—</div>
-    </div>
+        <button id="startBtn" class="secondary" disabled>Start</button>
+        <button id="stopBtn"  class="secondary" disabled>Stop</button>
+        <div class="timer" id="timer">00:00</div>
 
-    <div class="cardBody">
-      <div class="grid2">
-        <div class="card" style="box-shadow:none;">
-          <div class="cardBody">
-            <p class="smallLabel">Finish Time</p>
-            <p class="bigNumber" id="finishTime">—</p>
-            <div class="pillRow" id="finishPills"></div>
-          </div>
-        </div>
+        <button id="exportBtn" class="secondary" disabled>Export CSV</button>
+        <button id="summaryBtn" class="secondary" disabled>Detailed Summary</button>
 
-        <div class="card" style="box-shadow:none;">
-          <div class="cardBody">
-            <p class="smallLabel">Your Rhythm (Consistency)</p>
-            <p class="bigNumber" id="rhythmScore">—</p>
-            <div class="bar" title="Consistency">
-              <div id="rhythmBar"></div>
-            </div>
-            <div class="small" id="rhythmNote" style="margin-top:6px;">—</div>
-          </div>
-        </div>
+        <span class="spacer"></span>
+
+        <span style="font-size:11px;color:#555">
+          Aim TopCodes so they cross the red line.
+        </span>
       </div>
 
-      <div class="hr"></div>
+      <div class="controls-row">
+        <label for="lapsSel" style="font-size:12px;color:#333">Laps</label>
+        <select id="lapsSel" aria-label="Number of laps"></select>
 
-      <div class="sparkWrap">
-        <div class="sparkTitle">
-          <b>Lap trend</b>
-          <span id="trendHint">—</span>
-        </div>
-        <svg id="spark" width="100%" height="72" viewBox="0 0 600 72" role="img" aria-label="Lap trend sparkline">
-          <rect x="0" y="0" width="600" height="72" fill="rgba(1,88,113,.04)"></rect>
-          <path id="sparkPath" d="" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"></path>
-          <circle id="sparkDot" cx="0" cy="0" r="4" fill="var(--accent)"></circle>
-        </svg>
-        <div class="small" id="lapList" style="margin-top:8px;">—</div>
+        <label for="distanceInput" style="font-size:12px;color:#333">Run Distance (m)</label>
+        <input id="distanceInput" type="number" min="100" step="10" value="1600"
+               aria-label="Total run distance in metres" />
+
+        <span id="lapInfo" style="font-size:12px;color:#333;"></span>
       </div>
-
-      <div class="hr"></div>
-
-      <div class="callout">
-        <h3>What matters (not just “fast”)</h3>
-        <p>
-          Try to notice: <b>rhythm</b>, <b>effort</b>, and <b>how you feel</b>.
-          That’s real progress.
-        </p>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="grid2">
-        <div class="kpi">
-          <div class="icon" style="background:var(--good);">✔</div>
-          <div class="text">
-            <p class="cardTitle" style="margin:0;">Motivation & feelings</p>
-            <p class="cardHint" style="margin:2px 0 0 0;">
-              “I found a rhythm.” “I felt calmer.” “I kept trying.”
-            </p>
-          </div>
-        </div>
-
-        <div class="kpi">
-          <div class="icon" style="background:#3b82f6;">🤝</div>
-          <div class="text">
-            <p class="cardTitle" style="margin:0;">Social awareness</p>
-            <p class="cardHint" style="margin:2px 0 0 0;">
-              Notice your partner’s effort. Encourage, don’t compare.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="q">
-        <div class="item">
-          <b>1) Your rhythm</b>
-          <span>When did running feel smooth or “in flow”?</span>
-        </div>
-        <div class="item">
-          <b>2) Your feelings</b>
-          <span>What helped you feel more relaxed or confident?</span>
-        </div>
-        <div class="item">
-          <b>3) Your partner</b>
-          <span>What effort did you notice in your partner? What encouragement can you give?</span>
-        </div>
-        <div class="item">
-          <b>4) Next run goal</b>
-          <span>Pick one: smoother rhythm • steadier pace • kinder self-talk • better support for others.</span>
-        </div>
-      </div>
-
     </div>
   </section>
 
-  <!-- RIGHT: group snapshot + mini “infographics” -->
-  <aside class="card">
-    <div class="cardHeader">
-      <div>
-        <p class="cardTitle">Group snapshot</p>
-        <p class="cardHint">Quick picture of today’s run.</p>
-      </div>
+  <section class="bottom">
+    <div class="status" id="status">Idle. Tap "Enable Camera".</div>
+    <div class="tableWrap">
+      <table>
+        <thead>
+        <tr>
+          <th>Runner ID</th>
+          <th>Laps Left</th>
+          <th>Finish</th>
+          <th>Splits (mm:ss, …)</th>
+        </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
     </div>
-
-    <div class="cardBody">
-      <div class="grid2">
-        <div class="card" style="box-shadow:none;">
-          <div class="cardBody">
-            <p class="smallLabel">Completion</p>
-            <p class="bigNumber" id="completionPct">—</p>
-            <div class="bar"><div id="completionBar"></div></div>
-            <div class="small" id="completionNote" style="margin-top:6px;">—</div>
-          </div>
-        </div>
-
-        <div class="card" style="box-shadow:none;">
-          <div class="cardBody">
-            <p class="smallLabel">Team vibe</p>
-            <p class="bigNumber" id="vibeTag">—</p>
-            <div class="small" id="vibeNote" style="margin-top:6px;">
-              Cooperation & support make pace running feel safer and more enjoyable.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="sparkWrap">
-        <div class="sparkTitle">
-          <b>Leaderboard (finish time)</b>
-          <span class="small">DNF shown at bottom</span>
-        </div>
-        <div style="max-height:280px; overflow:auto; border-radius:12px;">
-          <table aria-label="Leaderboard">
-            <thead>
-              <tr>
-                <th>Runner</th>
-                <th>Finish</th>
-                <th>Rhythm</th>
-              </tr>
-            </thead>
-            <tbody id="leaderBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="callout">
-        <h3>Quick reminder</h3>
-        <p>
-          PE is also <b>social learning</b>: self-awareness, empathy, motivation, confidence.
-        </p>
-      </div>
+    <div class="footerBar">
+      • Use printed TopCodes (IDs 1–20 via mapping) • Good lighting improves scans • Tags can be angled, not perfectly flat
     </div>
-  </aside>
-</main>
+  </section>
+</div>
 
-<footer>
-  Tip: Use this page to talk about <b>rhythm</b>, <b>effort</b>, and <b>support</b> — not just speed.
-</footer>
+<!-- TopCodes library -->
+<script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
 (function(){
-  var STORE_KEY = 'topcodesLapSummaryV1';
+  var canvas   = document.getElementById('view');
+  var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
-  var metaLine = document.getElementById('metaLine');
-  var noData = document.getElementById('noData');
-  var app = document.getElementById('app');
+  var statusEl  = document.getElementById('status');
+  var tbody     = document.getElementById('tbody');
+  var timerEl   = document.getElementById('timer');
 
-  var runnerSel = document.getElementById('runnerSel');
-  var shareBtn = document.getElementById('shareBtn');
-  var clearBtn = document.getElementById('clearBtn');
+  var enableBtn = document.getElementById('enableBtn');
+  var disableBtn= document.getElementById('disableBtn');
+  var swapBtn   = document.getElementById('swapBtn');
 
-  var runnerTitle = document.getElementById('runnerTitle');
-  var runnerHint = document.getElementById('runnerHint');
-  var finishPill = document.getElementById('finishPill');
+  var startBtn  = document.getElementById('startBtn');
+  var stopBtn   = document.getElementById('stopBtn');
+  var exportBtn = document.getElementById('exportBtn');
+  var summaryBtn= document.getElementById('summaryBtn');
 
-  var finishTimeEl = document.getElementById('finishTime');
-  var finishPills = document.getElementById('finishPills');
+  var lapsSel   = document.getElementById('lapsSel');
+  var distanceInput = document.getElementById('distanceInput');
+  var lapInfoEl = document.getElementById('lapInfo');
 
-  var rhythmScoreEl = document.getElementById('rhythmScore');
-  var rhythmBar = document.getElementById('rhythmBar');
-  var rhythmNote = document.getElementById('rhythmNote');
+  var cameraActive = false;
+  var cameraStream = null;
 
-  var trendHint = document.getElementById('trendHint');
-  var sparkPath = document.getElementById('sparkPath');
-  var sparkDot = document.getElementById('sparkDot');
-  var lapList = document.getElementById('lapList');
+  // Facing mode control
+  // "environment" = back, "user" = front
+  var facingMode = "environment";
 
-  var completionPct = document.getElementById('completionPct');
-  var completionBar = document.getElementById('completionBar');
-  var completionNote = document.getElementById('completionNote');
-  var vibeTag = document.getElementById('vibeTag');
-  var leaderBody = document.getElementById('leaderBody');
+  function updateSwapLabel(){
+    swapBtn.textContent = "Switch: " + (facingMode === "environment" ? "Back" : "Front");
+  }
+  updateSwapLabel();
 
-  function safeParse(json){
-    try{ return JSON.parse(json); }catch(e){ return null; }
+  // Fix "back camera is reversed" (mirrored)
+  // If your device behaves opposite, flip the conditions below.
+  function applyCanvasMirrorFix(){
+    // User reported: back camera reversed -> unmirror back by flipping canvas in CSS
+    if (facingMode === "environment"){
+      canvas.style.transform = "scaleX(-1)";
+    } else {
+      // keep front as-is (or mirror if you prefer selfie view)
+      canvas.style.transform = "none";
+    }
+  }
+  applyCanvasMirrorFix();
+
+  var runDistanceMeters = parseFloat(distanceInput.value) || 1600;
+
+  // Populate laps 1..20 (default 4)
+  for (var i=1;i<=20;i++){
+    var opt=document.createElement('option');
+    opt.value=i;
+    opt.textContent=i;
+    if(i===4) opt.selected=true;
+    lapsSel.appendChild(opt);
+  }
+
+  function setStatus(msg){
+    statusEl.textContent = msg;
+    console.log(msg);
+  }
+
+  function updateLapInfo(){
+    var laps = parseInt(lapsSel.value,10) || 0;
+    if (!laps || !runDistanceMeters){
+      lapInfoEl.textContent = '';
+      return;
+    }
+    var per = runDistanceMeters / laps;
+    var perStr = Number.isInteger(per) ? per.toString() : per.toFixed(1);
+    lapInfoEl.textContent = '≈ ' + perStr + ' m per lap';
+  }
+
+  distanceInput.addEventListener('change', function(){
+    var v = parseFloat(distanceInput.value);
+    if (!isFinite(v) || v <= 0){
+      v = 1600;
+      distanceInput.value = '1600';
+    }
+    runDistanceMeters = v;
+    setStatus('Run distance set to ' + runDistanceMeters + ' m.');
+    updateLapInfo();
+  });
+
+  lapsSel.addEventListener('change', updateLapInfo);
+
+  // TopCode -> Runner ID mapping (A)
+  var TOPCODE_MAP = {
+    31:1,  47:2,  55:3,  59:4,  61:5,
+    79:6,  87:7,  91:8,  93:9,  103:10,
+    107:11,109:12,115:13,117:14,121:15,
+    143:16,151:17,155:18,157:19,167:20
+  };
+  function mapCode(raw){
+    return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
   }
 
   function msToMMSS(ms){
-    if (!isFinite(ms)) return 'DNF';
     var s = Math.floor(ms/1000);
     var m = Math.floor(s/60);
-    var ss= s%60;
-    return (m<10?'0':'')+m+':' + (ss<10?'0':'')+ss;
+    var ss= s % 60;
+    return (m<10?'0':'')+m + ':' + (ss<10?'0':'')+ss;
   }
 
-  function msToPaceMinKm(ms, distMeters){
-    if (!isFinite(ms) || !distMeters) return '';
-    var totalSec = ms/1000;
-    var paceSecPerKm = totalSec / (distMeters/1000);
-    var pm = Math.floor(paceSecPerKm/60);
-    var ps = Math.round(paceSecPerKm%60);
-    return pm + ':' + (ps<10?'0':'')+ps;
+  function colorForRemaining(rem){
+    if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0';
+    if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50';
+    if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0';
+    if (rem === 17)                                        return '#CDDC39';
+    if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3';
+    if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800';
+    if (rem === 1)                                         return '#F44336';
+    if (rem <= 0)                                          return '#9E9E9E';
+    return '#EEEEEE';
   }
 
-  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+  // State
+  var counting   = false;
+  var startTime  = 0;
+  var timerTick  = null;
+  var lineY      = null;
+  var COOLDOWN   = 1200;
 
-  function mean(arr){
-    var s=0, c=0;
-    for (var i=0;i<arr.length;i++){
-      if (isFinite(arr[i])){ s += arr[i]; c++; }
-    }
-    return c? (s/c) : NaN;
-  }
+  // runners[id] = { laps:[], lastTs, finished, totalLaps, lastSide }
+  var runners    = {};
 
-  function stddev(arr){
-    var m = mean(arr);
-    if (!isFinite(m)) return NaN;
-    var s=0, c=0;
-    for (var i=0;i<arr.length;i++){
-      if (isFinite(arr[i])){
-        var d = arr[i]-m;
-        s += d*d;
-        c++;
-      }
-    }
-    return c>1 ? Math.sqrt(s/(c-1)) : 0;
-  }
+  function ensureRunner(id){
+    var key = String(id);
+    if (!runners[key]){
+      var total = parseInt(lapsSel.value,10);
+      runners[key] = { laps:[], lastTs:0, finished:false, totalLaps: total, lastSide: null };
 
-  // Rhythm score from lap-to-lap variation: higher is better (0–100)
-  function rhythmScore(lapTimesMs){
-    // Convert cumulative splits -> per-lap durations
-    if (!lapTimesMs || lapTimesMs.length < 2) return {score: 0, note: 'Not enough laps to score rhythm.'};
-    var per = [];
-    for (var i=0;i<lapTimesMs.length;i++){
-      var prev = i===0 ? 0 : lapTimesMs[i-1];
-      per.push(lapTimesMs[i] - prev);
-    }
-    // Coefficient of variation (cv) on per-lap times
-    var m = mean(per);
-    var sd = stddev(per);
-    if (!isFinite(m) || m<=0) return {score: 0, note:'Not enough data.'};
-    var cv = sd / m; // lower is better
-    // Map cv to score: cv 0.00 => 100, cv 0.20 => ~50, cv 0.35 => ~20
-    var score = 100 * Math.exp(-6*cv);
-    score = Math.round(clamp(score, 0, 100));
-
-    var label = score>=75 ? 'Very steady' : score>=55 ? 'Steady' : score>=35 ? 'Getting there' : 'Needs practice';
-    var note = label + ' • Try to match your breathing + steps for a smoother rhythm.';
-    return {score: score, note: note, perLap: per, cv: cv};
-  }
-
-  function trendTag(perLap){
-    if (!perLap || perLap.length < 2) return {tag:'—', hint:'Need more laps to show a trend.'};
-    // Compare first half vs second half
-    var mid = Math.floor(perLap.length/2);
-    var a = mean(perLap.slice(0, mid));
-    var b = mean(perLap.slice(mid));
-    if (!isFinite(a) || !isFinite(b)) return {tag:'—', hint:'—'};
-    var diff = (b - a) / a; // positive = slowed
-    if (diff <= -0.03) return {tag:'Strong finish', hint:'Your later laps were faster.'};
-    if (diff < 0.03)   return {tag:'Even pacing',  hint:'Your pace stayed pretty steady.'};
-    return {tag:'Faded a bit', hint:'Later laps were slower—try smoother breathing + rhythm.'};
-  }
-
-  function pillClassFromScore(score){
-    if (score>=75) return 'good';
-    if (score>=45) return 'warn';
-    return 'bad';
-  }
-
-  function buildSpark(perLap){
-    // Draw sparkline in 600x72 viewBox
-    var W=600, H=72, pad=10;
-    if (!perLap || !perLap.length){
-      sparkPath.setAttribute('d','');
-      sparkDot.setAttribute('cx','0');
-      sparkDot.setAttribute('cy','0');
-      return;
-    }
-    var min=Infinity, max=-Infinity;
-    for (var i=0;i<perLap.length;i++){
-      min=Math.min(min, perLap[i]);
-      max=Math.max(max, perLap[i]);
-    }
-    if (!isFinite(min) || !isFinite(max) || min===max){
-      min = min || 0;
-      max = min + 1;
-    }
-    var dx = (W - pad*2) / Math.max(1, (perLap.length-1));
-    var d = '';
-    for (var j=0;j<perLap.length;j++){
-      var x = pad + j*dx;
-      var t = (perLap[j]-min)/(max-min);   // 0..1
-      var y = pad + (1-t)*(H - pad*2);
-      d += (j===0 ? 'M' : ' L') + x.toFixed(1) + ' ' + y.toFixed(1);
-    }
-    sparkPath.setAttribute('d', d);
-
-    // Dot at last point
-    var lastX = pad + (perLap.length-1)*dx;
-    var lastT = (perLap[perLap.length-1]-min)/(max-min);
-    var lastY = pad + (1-lastT)*(H - pad*2);
-    sparkDot.setAttribute('cx', lastX.toFixed(1));
-    sparkDot.setAttribute('cy', lastY.toFixed(1));
-  }
-
-  function setLeaderTable(rows, selectedId){
-    // rows: [{id, finishMs, rhythmScore}]
-    while (leaderBody.firstChild) leaderBody.removeChild(leaderBody.firstChild);
-    for (var i=0;i<rows.length;i++){
-      var r = rows[i];
       var tr = document.createElement('tr');
-      if (String(r.id) === String(selectedId)) tr.className = 'me';
-
-      var fin = isFinite(r.finishMs) ? msToMMSS(r.finishMs) : 'DNF';
-      var rs = isFinite(r.rhythm) ? (r.rhythm + '/100') : '—';
-
+      tr.id = 'r-'+key;
       tr.innerHTML =
-        '<td>'+r.id+'</td>' +
-        '<td>'+fin+'</td>' +
-        '<td>'+rs+'</td>';
-      leaderBody.appendChild(tr);
+        '<td>'+id+'</td>'+
+        '<td id="laps-'+key+'">'+total+'</td>'+
+        '<td id="fin-'+key+'">-</td>'+
+        '<td id="splits-'+key+'">-</td>';
+      tbody.appendChild(tr);
     }
   }
 
-  function buildRunnerOptions(runners){
-    while (runnerSel.firstChild) runnerSel.removeChild(runnerSel.firstChild);
-    // Add "Group view" + runner list
-    var opt0 = document.createElement('option');
-    opt0.value = '__group__';
-    opt0.textContent = 'Group (Everyone)';
-    runnerSel.appendChild(opt0);
+  function updateRunnerRow(id){
+    var key = String(id);
+    var r = runners[key];
+    if (!r) return;
 
-    for (var i=0;i<runners.length;i++){
-      var opt = document.createElement('option');
-      opt.value = String(runners[i].id);
-      opt.textContent = 'Runner ' + runners[i].id;
-      runnerSel.appendChild(opt);
-    }
-  }
+    var lapsDone  = r.laps.length;
+    var remaining = r.totalLaps - lapsDone;
+    if (remaining < 0) remaining = 0;
 
-  function setFinishPills(finishMs, distMeters){
-    while (finishPills.firstChild) finishPills.removeChild(finishPills.firstChild);
+    var lapsCell   = document.getElementById('laps-'+key);
+    var finCell    = document.getElementById('fin-'+key);
+    var splitsCell = document.getElementById('splits-'+key);
 
-    if (!isFinite(finishMs)){
-      var p = document.createElement('span');
-      p.className = 'pill bad';
-      p.textContent = 'DNF';
-      finishPills.appendChild(p);
-
-      var q = document.createElement('span');
-      q.className = 'pill';
-      q.textContent = 'Try again: find a calm rhythm';
-      finishPills.appendChild(q);
-      return;
+    if (lapsCell){
+      lapsCell.textContent = remaining;
+      var c = colorForRemaining(remaining);
+      lapsCell.style.backgroundColor = c;
+      lapsCell.style.color = (remaining <= 1) ? '#fff' : '#000';
     }
 
-    var pace = msToPaceMinKm(finishMs, distMeters);
-    var p1 = document.createElement('span');
-    p1.className = 'pill good';
-    p1.textContent = 'Finish ✔';
-    finishPills.appendChild(p1);
-
-    if (pace){
-      var p2 = document.createElement('span');
-      p2.className = 'pill';
-      p2.textContent = 'Pace ' + pace + ' /km';
-      finishPills.appendChild(p2);
+    if (finCell){
+      finCell.textContent = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : '-';
+      if (r.finished && remaining === 0) finCell.style.fontWeight = '700';
     }
 
-    var p3 = document.createElement('span');
-    p3.className = 'pill';
-    p3.textContent = 'Next: smoother rhythm';
-    finishPills.appendChild(p3);
-  }
-
-  function setGroupSnapshot(allRows){
-    var total = allRows.length;
-    var finished = 0;
-    for (var i=0;i<allRows.length;i++){
-      if (isFinite(allRows[i].finishMs)) finished++;
-    }
-    var pct = total ? Math.round((finished/total)*100) : 0;
-    completionPct.textContent = pct + '%';
-    completionBar.style.width = pct + '%';
-    completionNote.textContent = finished + ' of ' + total + ' finished.';
-
-    // Simple “vibe” tag: more finishers => more confident mood
-    // (This is a gentle, non-judgy indicator for learners.)
-    if (pct >= 80){ vibeTag.textContent = 'Confident'; }
-    else if (pct >= 50){ vibeTag.textContent = 'Building'; }
-    else { vibeTag.textContent = 'Learning'; }
-  }
-
-  function showGroupMode(data, selectedId){
-    runnerTitle.textContent = 'Everyone';
-    runnerHint.textContent = 'Focus on rhythm + support. Speed can improve later.';
-    finishPill.textContent = 'Group';
-    finishPill.className = 'pill';
-
-    finishTimeEl.textContent = data.lapsConfig + ' laps';
-    setFinishPills(NaN, data.runDistanceMeters);
-
-    rhythmScoreEl.textContent = 'Together';
-    rhythmBar.style.width = '100%';
-    rhythmNote.textContent = 'Cooperation replaces competition. Encourage each other.';
-
-    trendHint.textContent = 'Look for smooth pacing, not “fast at all costs”.';
-    sparkPath.setAttribute('d','');
-    sparkDot.setAttribute('cx','0');
-    sparkDot.setAttribute('cy','0');
-    lapList.textContent = 'Tip: If someone struggles, match a comfortable rhythm and give supportive feedback.';
-
-    // Leaderboard rows
-    var rows = [];
-    for (var i=0;i<data.runners.length;i++){
-      var r = data.runners[i];
-      var finishMs = r.splitsMs && r.splitsMs.length ? r.splitsMs[r.splitsMs.length-1] : NaN;
-      var rsObj = rhythmScore(r.splitsMs || []);
-      rows.push({ id:r.id, finishMs: finishMs, rhythm: rsObj.score });
-    }
-    rows.sort(function(a,b){
-      var fa = a.finishMs, fb = b.finishMs;
-      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
-      if (!isFinite(fa)) return 1;
-      if (!isFinite(fb)) return -1;
-      return fa - fb;
-    });
-
-    setGroupSnapshot(rows);
-    setLeaderTable(rows, selectedId);
-  }
-
-  function showRunnerMode(data, runnerId){
-    var r = null;
-    for (var i=0;i<data.runners.length;i++){
-      if (String(data.runners[i].id) === String(runnerId)){
-        r = data.runners[i]; break;
+    if (splitsCell){
+      if (lapsDone){
+        var parts = [];
+        for (var i=0;i<r.laps.length;i++) parts.push(msToMMSS(r.laps[i]));
+        splitsCell.textContent = parts.join(' | ');
+      } else {
+        splitsCell.textContent = '-';
       }
     }
-    if (!r){
-      showGroupMode(data, runnerId);
-      return;
+
+    if (r.finished){
+      var row = document.getElementById('r-'+key);
+      if (row) row.classList.add('done');
+    }
+  }
+
+  function countLap(id){
+    var key = String(id);
+    var r = runners[key];
+    if (!r) return;
+
+    var now = Date.now();
+    if (r.finished) return;
+    if (now - r.lastTs < COOLDOWN) return;
+
+    r.laps.push(now - startTime);
+    r.lastTs = now;
+
+    if (r.laps.length >= r.totalLaps) r.finished = true;
+
+    updateRunnerRow(id);
+
+    var rem = r.totalLaps - r.laps.length;
+    if (rem < 0) rem = 0;
+    setStatus('Runner '+id+' → laps left: '+rem+(r.finished ? ' (Finished)' : ''));
+  }
+
+  function startTimer(){
+    startTime = Date.now();
+    timerEl.textContent = '00:00';
+    timerTick = setInterval(function(){
+      timerEl.textContent = msToMMSS(Date.now()-startTime);
+    }, 1000);
+  }
+
+  function stopTimer(){
+    if (timerTick){
+      clearInterval(timerTick);
+      timerTick = null;
+    }
+  }
+
+  // Keep canvas width/height attributes aligned to layout for TopCodes
+  function resizeCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    var dpr = window.devicePixelRatio || 1;
+    var targetW = Math.max(1, Math.round(rect.width * dpr));
+    var targetH = Math.max(1, Math.round(rect.height * dpr));
+
+    // Prevent extreme sizes
+    var MAX_W = 1600;
+    if (targetW > MAX_W){
+      var scale = MAX_W / targetW;
+      targetW = Math.round(targetW * scale);
+      targetH = Math.round(targetH * scale);
     }
 
-    runnerTitle.textContent = 'Runner ' + r.id;
-    runnerHint.textContent = 'Feedback for your next run: rhythm, feelings, and support.';
-    finishPill.textContent = r.finished ? 'Finished' : 'DNF';
-    finishPill.className = 'pill ' + (r.finished ? 'good' : 'bad');
+    if (canvas.width !== targetW || canvas.height !== targetH){
+      canvas.width  = targetW;
+      canvas.height = targetH;
+      canvas.setAttribute('width', String(targetW));
+      canvas.setAttribute('height', String(targetH));
+    }
+  }
 
-    var splits = r.splitsMs || [];
-    var finishMs = splits.length ? splits[splits.length-1] : NaN;
+  // ===== TopCodes frame callback =====
+  function handleFrame(jsonString){
+    var data;
+    try{ data = JSON.parse(jsonString); }catch(e){ return; }
 
-    finishTimeEl.textContent = isFinite(finishMs) ? msToMMSS(finishMs) : 'DNF';
-    setFinishPills(finishMs, data.runDistanceMeters);
+    var tcodes = data.topcodes || [];
+    var w = canvas.width  || 640;
+    var h = canvas.height || 480;
 
-    var rs = rhythmScore(splits);
-    rhythmScoreEl.textContent = rs.score + '/100';
-    rhythmBar.style.width = rs.score + '%';
-    rhythmBar.style.background = 'var(--accent)';
-    rhythmNote.textContent = rs.note;
+    lineY = Math.round(h * 0.5);
 
-    // Per-lap durations for trend + spark
-    var perLap = rs.perLap || [];
-    var t = trendTag(perLap);
-    trendHint.textContent = t.tag + ' • ' + t.hint;
+    // Deadband around line to avoid jitter (canvas pixels)
+    var deadband = Math.max(16, Math.round(h * 0.10));
 
-    buildSpark(perLap);
+    // Draw red line overlay
+    ctx.save();
+    var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
+    ctx.strokeStyle = (lineColor || 'red').trim();
+    ctx.lineWidth   = Math.max(3, h/220);
+    ctx.beginPath();
+    ctx.moveTo(0, lineY);
+    ctx.lineTo(w, lineY);
+    ctx.stroke();
+    ctx.restore();
 
-    // Lap list in simple words
-    if (!perLap.length){
-      lapList.textContent = 'No lap trend available.';
-    } else {
-      var out = [];
-      for (var j=0;j<perLap.length;j++){
-        out.push('Lap ' + (j+1) + ': ' + msToMMSS(perLap[j]));
+    if (!counting) return;
+
+    for (var i=0;i<tcodes.length;i++){
+      var tc = tcodes[i];
+      var runnerID = mapCode(tc.code);
+      if (!runnerID) continue;
+
+      ensureRunner(runnerID);
+      var key = String(runnerID);
+      var r = runners[key];
+      if (!r || r.finished) continue;
+
+      // Tag centre in canvas pixel coords (TopCodes coordinates are canvas-based)
+      var cy = tc.y;
+
+      // side: -1 above, +1 below, 0 within deadband
+      var dy = cy - lineY;
+      var side = 0;
+      if (dy < -deadband) side = -1;
+      else if (dy > deadband) side = +1;
+
+      // Count only on a clear crossing from above -> below
+      if (r.lastSide === -1 && side === +1){
+        countLap(runnerID);
       }
-      lapList.textContent = out.join('  •  ');
+
+      // Update lastSide only when clearly outside deadband
+      if (side !== 0) r.lastSide = side;
     }
+  }
 
-    // Leaderboard rows (with highlight)
-    var rows = [];
-    for (var k=0;k<data.runners.length;k++){
-      var rr = data.runners[k];
-      var fms = rr.splitsMs && rr.splitsMs.length ? rr.splitsMs[rr.splitsMs.length-1] : NaN;
-      var rrScore = rhythmScore(rr.splitsMs || []).score;
-      rows.push({ id: rr.id, finishMs: fms, rhythm: rrScore });
+  // === Camera control strategy (FIXED) ===
+  // 1) We get our own stream with facingMode (front/back).
+  // 2) We start TopCodes scanning using startStopVideoScan (so the decode loop runs).
+  // 3) After TopCodes creates its <video>, we replace that video’s srcObject with OUR stream.
+  //    This avoids “TopCodes not detected” (decode loop stays alive) while giving camera control.
+
+  function stopStream(stream){
+    if (!stream) return;
+    try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  }
+
+  function stopCamera(){
+    if (cameraActive){
+      try{
+        // This stops TopCodes scan loop + its internal stream (if any)
+        TopCodes.startStopVideoScan('view');
+      }catch(e){}
     }
-    rows.sort(function(a,b){
-      var fa = a.finishMs, fb = b.finishMs;
-      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
-      if (!isFinite(fa)) return 1;
-      if (!isFinite(fb)) return -1;
-      return fa - fb;
-    });
+    cameraActive = false;
 
-    setGroupSnapshot(rows);
-    setLeaderTable(rows, r.id);
+    stopStream(cameraStream);
+    cameraStream = null;
+
+    enableBtn.disabled  = false;
+    disableBtn.disabled = true;
+    swapBtn.disabled    = true;
+    startBtn.disabled   = true;
+    stopBtn.disabled    = true;
+
+    setStatus('Camera stopped. You can re-enable it again.');
   }
 
-  function readData(){
-    var raw = localStorage.getItem(STORE_KEY);
-    var data = safeParse(raw || '');
-    if (!data || !data.runners || !Array.isArray(data.runners)){
-      noData.style.display = 'block';
-      app.style.display = 'none';
-      metaLine.textContent = 'No data yet';
-      return null;
+  function attachStreamToTopCodesVideo(stream){
+    // TopCodes typically creates a video with id "view-video"
+    var v = document.getElementById('view-video');
+    if (!v){
+      // fallback: grab any newly created video
+      var vids = document.getElementsByTagName('video');
+      if (vids && vids.length) v = vids[vids.length-1];
     }
-    return data;
-  }
+    if (!v) return false;
 
-  function applyMeta(data){
-    var when = data.createdAt ? new Date(data.createdAt) : null;
-    var whenStr = when && !isNaN(when.getTime()) ? when.toLocaleString() : '—';
-    metaLine.textContent =
-      (data.runDistanceMeters ? (data.runDistanceMeters + ' m') : 'Run') +
-      ' • ' + (data.lapsConfig ? (data.lapsConfig + ' laps') : '') +
-      ' • ' + whenStr;
-  }
-
-  function getRunnerFromQuery(){
-    var params = new URLSearchParams(location.search);
-    return params.get('runner');
-  }
-
-  function setQueryRunner(val){
-    var params = new URLSearchParams(location.search);
-    if (!val || val === '__group__') params.delete('runner');
-    else params.set('runner', val);
-    var newUrl = location.pathname + (params.toString() ? ('?' + params.toString()) : '');
-    history.replaceState(null, '', newUrl);
-  }
-
-  function refresh(){
-    var data = readData();
-    if (!data) return;
-    noData.style.display = 'none';
-    app.style.display = 'grid';
-
-    applyMeta(data);
-
-    // Sort runners by numeric id for dropdown
-    data.runners.sort(function(a,b){ return Number(a.id)-Number(b.id); });
-
-    buildRunnerOptions(data.runners);
-
-    var q = getRunnerFromQuery();
-    if (q && q !== '__group__'){
-      // ensure exists in select
-      runnerSel.value = q;
-      if (runnerSel.value !== q) runnerSel.value = '__group__';
-    } else {
-      runnerSel.value = '__group__';
-    }
-
-    if (runnerSel.value === '__group__') showGroupMode(data, q);
-    else showRunnerMode(data, runnerSel.value);
-  }
-
-  runnerSel.addEventListener('change', function(){
-    setQueryRunner(runnerSel.value);
-    refresh();
-  });
-
-  shareBtn.addEventListener('click', async function(){
     try{
-      var url = location.href;
-      await navigator.clipboard.writeText(url);
-      shareBtn.textContent = 'Copied!';
-      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
+      v.srcObject = stream;
+      v.playsInline = true;
+      v.muted = true;
+      var p = v.play();
+      if (p && typeof p.catch === 'function') p.catch(function(){});
+      return true;
     }catch(e){
-      shareBtn.textContent = 'Copy failed';
-      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
+      return false;
+    }
+  }
+
+  function startCamera(){
+    if (cameraActive) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
+      return;
+    }
+
+    resizeCanvas();
+    applyCanvasMirrorFix();
+
+    enableBtn.disabled = true;
+
+    var constraints = {
+      audio:false,
+      video:{
+        facingMode: { ideal: facingMode }
+      }
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(function(stream){
+        cameraStream = stream;
+
+        // Start TopCodes scan loop (this is the part that was missing when you used startVideoScan)
+        try{
+          TopCodes.startStopVideoScan('view');
+        }catch(e){
+          stopStream(stream);
+          cameraStream = null;
+          enableBtn.disabled = false;
+          setStatus('TopCodes failed to start. Try reloading the page.');
+          return;
+        }
+
+        // Bind callback
+        try{
+          TopCodes.setVideoFrameCallback('view', handleFrame);
+        }catch(e2){}
+
+        // Replace TopCodes' internal video stream with our chosen stream (front/back)
+        // Do it a few times (some phones create the video slightly later).
+        var tries = 0;
+        var maxTries = 12;
+        var iv = setInterval(function(){
+          tries++;
+          var ok = attachStreamToTopCodesVideo(cameraStream);
+          if (ok || tries >= maxTries){
+            clearInterval(iv);
+
+            // If TopCodes stored an internal stream, stop it to avoid dual camera usage
+            try{
+              if (TopCodes._mediaStreams && TopCodes._mediaStreams['view']){
+                // If it's not the same as our stream, stop it
+                if (TopCodes._mediaStreams['view'] !== cameraStream){
+                  stopStream(TopCodes._mediaStreams['view']);
+                }
+                TopCodes._mediaStreams['view'] = cameraStream;
+              }
+            }catch(e3){}
+
+            cameraActive = true;
+
+            enableBtn.disabled  = true;
+            disableBtn.disabled = false;
+            swapBtn.disabled    = false;
+            startBtn.disabled   = false;
+            stopBtn.disabled    = true;
+            exportBtn.disabled  = true;
+            summaryBtn.disabled = true;
+
+            setStatus(
+              'Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') +
+              '). Aim TopCodes so they cross the red line. Tap "Start" to begin.'
+            );
+          }
+        }, 120);
+      })
+      .catch(function(err){
+        console.error(err);
+        enableBtn.disabled = false;
+        setStatus('Camera error: ' + (err.message || err) + '. Check permissions and HTTPS/localhost.');
+      });
+  }
+
+  function restartCamera(){
+    stopCamera();
+    startCamera();
+  }
+
+  // ===== Buttons =====
+  enableBtn.addEventListener('click', function(){
+    if (cameraActive) { setStatus('Camera already active.'); return; }
+    startCamera();
+  });
+
+  disableBtn.addEventListener('click', stopCamera);
+
+  swapBtn.addEventListener('click', function(){
+    facingMode = (facingMode === 'environment') ? 'user' : 'environment';
+    updateSwapLabel();
+    applyCanvasMirrorFix();
+    if (cameraActive){
+      setStatus('Switching camera…');
+      restartCamera();
     }
   });
 
-  clearBtn.addEventListener('click', function(){
-    // simple + direct (no extra confirmation prompts)
-    localStorage.removeItem(STORE_KEY);
-    refresh();
+  startBtn.addEventListener('click', function(){
+    if (counting) return;
+
+    // Lock config during run
+    lapsSel.disabled = true;
+    distanceInput.disabled = true;
+
+    // reset runners and table
+    runners = {};
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+    counting = true;
+    startTimer();
+
+    startBtn.disabled  = true;
+    stopBtn.disabled   = false;
+    exportBtn.disabled = true;
+    summaryBtn.disabled= true;
+
+    setStatus('Counting… TopCodes must CROSS the line (above → below) to reduce laps left.');
   });
 
-  refresh();
+  stopBtn.addEventListener('click', function(){
+    if (!counting) return;
+    counting = false;
+    stopTimer();
+
+    // Unlock config after run
+    lapsSel.disabled = false;
+    distanceInput.disabled = false;
+
+    // Mark unfinished as DNF
+    for (var id in runners){
+      if (runners.hasOwnProperty(id)){
+        var r = runners[id];
+        if (!r.finished){
+          var finCell = document.getElementById('fin-'+id);
+          if (finCell) finCell.textContent = 'DNF';
+        }
+      }
+    }
+
+    startBtn.disabled  = false;
+    stopBtn.disabled   = true;
+    exportBtn.disabled = Object.keys(runners).length === 0;
+    summaryBtn.disabled= Object.keys(runners).length === 0;
+
+    setStatus('Stopped. You can export CSV or view Detailed Summary now.');
+  });
+
+  exportBtn.addEventListener('click', function(){
+    var ids = Object.keys(runners).sort(function(a,b){ return Number(a)-Number(b); });
+    if (!ids.length){ setStatus('No data to export.'); return; }
+
+    var maxLaps = 0;
+    for (var idx=0; idx<ids.length; idx++){
+      var rr = runners[ids[idx]];
+      if (rr.laps.length > maxLaps) maxLaps = rr.laps.length;
+    }
+
+    var rows = [];
+    var header = ['Runner ID','Total Laps','Run Distance (m)','Total Distance (m)','Finish','Pace (min/km)'];
+    for (var j=1;j<=maxLaps;j++) header.push('Lap '+j+' (mm:ss)');
+    rows.push(header);
+
+    var totalRunMeters = runDistanceMeters;
+
+    for (idx=0; idx<ids.length; idx++){
+      var rid = ids[idx];
+      var r = runners[rid];
+      var total  = r.totalLaps;
+      var lapsDone = r.laps.length;
+      var finishMs = lapsDone ? r.laps[lapsDone-1] : NaN;
+      var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
+
+      var totalDist = totalRunMeters;
+      var paceStrVal = '';
+      if (lapsDone){
+        var totalSec = finishMs/1000;
+        var paceSecPerKm = totalSec / (totalDist/1000);
+        var paceMin = Math.floor(paceSecPerKm / 60);
+        var paceSec = Math.round(paceSecPerKm % 60);
+        paceStrVal = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
+      }
+
+      var row = [rid, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
+      for (j=0;j<maxLaps;j++){
+        row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
+      }
+      rows.push(row);
+    }
+
+    var csv = '';
+    for (var rIdx=0; rIdx<rows.length; rIdx++){
+      var cols = rows[rIdx];
+      var parts = [];
+      for (var cIdx=0; cIdx<cols.length; cIdx++){
+        var s = String(cols[cIdx]);
+        if (s.indexOf(',') !== -1) s = '"' + s.replace(/"/g,'""') + '"';
+        parts.push(s);
+      }
+      csv += parts.join(',') + '\n';
+    }
+
+    var encoded = encodeURIComponent(csv);
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encoded;
+    a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setStatus('CSV exported.');
+  });
+
+  function buildSummaryData(){
+    var ids = Object.keys(runners).sort(function(a,b){ return Number(a)-Number(b); });
+    if (!ids.length) return null;
+
+    var runnersArr = [];
+    for (var k=0;k<ids.length;k++){
+      var id = ids[k];
+      var r  = runners[id];
+      runnersArr.push({
+        id: id,
+        totalLaps: r.totalLaps,
+        finished: !!r.finished,
+        splitsMs: r.laps.slice()
+      });
+    }
+
+    return {
+      createdAt: new Date().toISOString(),
+      runDistanceMeters: runDistanceMeters,
+      lapsConfig: parseInt(lapsSel.value,10),
+      runners: runnersArr
+    };
+  }
+
+  summaryBtn.addEventListener('click', function(){
+    var data = buildSummaryData();
+    if (!data){ setStatus('No data available for summary.'); return; }
+    try{
+      localStorage.setItem('topcodesLapSummaryV1', JSON.stringify(data));
+      window.open('detailedsummary.html', '_blank');
+    }catch(e){
+      console.error(e);
+      setStatus('Unable to save summary data. Check storage settings.');
+    }
+  });
+
+  window.addEventListener('resize', function(){
+    var wasActive = cameraActive;
+    resizeCanvas();
+    if (wasActive){
+      // Avoid constant restarts if the browser fires many resize events
+      setStatus('Resized. If the view looks off, disable + enable camera once.');
+    }
+  });
+
+  window.addEventListener('beforeunload', function(){
+    stopCamera();
+  });
+
+  // Initial setup
+  resizeCanvas();
+  updateLapInfo();
+  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR/barcodes). Note: Camera requires HTTPS or localhost.');
 })();
 </script>
 </body>
