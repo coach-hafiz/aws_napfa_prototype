@@ -5,6 +5,7 @@
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>TopCodes Lap Counter</title>
+
 <style>
 :root{
   --accent:#015871;
@@ -21,26 +22,23 @@ body{
 
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: make camera view BIGGER */
+/* Portrait: bigger camera view */
 @media (orientation:portrait){
   .app{
-    grid-template-rows: 62vh 1fr;  /* was 45vh */
+    grid-template-rows: 62vh 1fr;
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "top"
-      "bottom";
+    grid-template-areas: "top" "bottom";
   }
   .top{ grid-area: top; }
   .bottom{ grid-area: bottom; }
 }
 
-/* Landscape: keep split view */
+/* Landscape: give video a bit more space */
 @media (orientation:landscape){
   .app{
-    grid-template-columns: 1.15fr 0.85fr; /* give video a bit more */
+    grid-template-columns: 1.15fr 0.85fr;
     grid-template-rows: 100vh;
-    grid-template-areas:
-      "left right";
+    grid-template-areas: "left right";
   }
   .top{ grid-area: left; height:100vh; }
   .bottom{ grid-area: right; height:100vh; }
@@ -52,12 +50,21 @@ body{
   overflow:hidden;
 }
 
+/* Canvas TopCodes draws into */
 #view{
   width:100%;
   height:100%;
   display:block;
   background:#000;
   touch-action:none;
+  transform:none; /* IMPORTANT: do NOT mirror the canvas */
+}
+
+/* IMPORTANT: Some devices/implementations end up mirroring the <video>.
+   Force un-mirrored display for the TopCodes video element. */
+#view-video{
+  transform:none !important;
+  -webkit-transform:none !important;
 }
 
 /* Controls overlay */
@@ -166,7 +173,6 @@ tr.done{ background:#e9f6ec }
   color:#444;
 }
 
-/* Small screens */
 @media (max-width:420px){
   button{ padding:8px 10px }
   .timer{ min-width:66px }
@@ -174,6 +180,7 @@ tr.done{ background:#e9f6ec }
 }
 </style>
 </head>
+
 <body>
 <div class="app">
   <section class="top">
@@ -260,9 +267,10 @@ tr.done{ background:#e9f6ec }
   var lapInfoEl = document.getElementById('lapInfo');
 
   var cameraActive = false;
+  var scanningActive = false; // TopCodes toggler state (we manage it)
+  var starting = false;
 
-  // Facing mode control
-  // "environment" = back, "user" = front
+  // Facing mode: "environment" = rear, "user" = front
   var facingMode = "environment";
   function updateSwapLabel(){
     swapBtn.textContent = "Switch: " + (facingMode === "environment" ? "Back" : "Front");
@@ -339,7 +347,7 @@ tr.done{ background:#e9f6ec }
     return '#EEEEEE';
   }
 
-  // State
+  // ===== Timing & lap counting state =====
   var counting   = false;
   var startTime  = 0;
   var timerTick  = null;
@@ -443,137 +451,25 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  /**
-   * IMPORTANT: TopCodes.startVideoScan() uses the canvas element's WIDTH/HEIGHT ATTRIBUTES
-   * to set camera constraints. So we must keep those attributes in sync with our layout.
-   */
+  // Keep canvas width/height attributes aligned (TopCodes uses canvas attrs internally)
   function resizeCanvas(){
     var rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    var dpr = window.devicePixelRatio || 1;
-
-    // Use device pixels for detection clarity, but cap to avoid super heavy loads.
-    // (Still usually much sharper than CSS-only sizing.)
-    var targetW = Math.max(1, Math.round(rect.width * dpr));
-    var targetH = Math.max(1, Math.round(rect.height * dpr));
-
-    // Optional cap (prevents requesting 4K on some devices)
-    var MAX_W = 1920;
-    if (targetW > MAX_W){
-      var scale = MAX_W / targetW;
-      targetW = Math.round(targetW * scale);
-      targetH = Math.round(targetH * scale);
-    }
+    // IMPORTANT: Use CSS pixel size here (NOT DPR) to avoid mismatch with TopCodes coordinates.
+    // DPR scaling can make detections "appear" off and sometimes break on mobile.
+    var targetW = Math.max(1, Math.round(rect.width));
+    var targetH = Math.max(1, Math.round(rect.height));
 
     if (canvas.width !== targetW || canvas.height !== targetH){
       canvas.width  = targetW;
       canvas.height = targetH;
-
-      // Keep ATTRIBUTES aligned (TopCodes reads these)
       canvas.setAttribute('width', String(targetW));
       canvas.setAttribute('height', String(targetH));
     }
   }
 
-  // ===== Patch TopCodes camera constraints to support front/back switching =====
-  // (We override startVideoScan to include facingMode while keeping original behavior.)
-  function patchTopCodesForFacingMode(){
-    if (!window.TopCodes || !TopCodes.startVideoScan) return;
-
-    if (TopCodes.__patchedFacingMode) return;
-    TopCodes.__patchedFacingMode = true;
-
-    var originalStartVideoScan = TopCodes.startVideoScan;
-
-    TopCodes.startVideoScan = function(canvasId){
-      // initialize scanner if needed (same as library)
-      if (!(canvasId in TopCodes._mediaStreams)) {
-        // topcodes_initVideoScanner is global inside library
-        if (typeof topcodes_initVideoScanner === 'function') topcodes_initVideoScanner(canvasId);
-      }
-
-      var canvasEl = document.querySelector("#" + canvasId);
-      var videoEl  = document.querySelector("#" + canvasId + "-video");
-      if (!canvasEl || !videoEl || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-        try { originalStartVideoScan(canvasId); } catch(e){}
-        return;
-      }
-
-      var vw = parseInt(canvasEl.getAttribute('width'), 10);
-      var vh = parseInt(canvasEl.getAttribute('height'), 10);
-
-      // If width/height are missing, fall back to original (but we try to keep them set)
-      if (!isFinite(vw) || !isFinite(vh) || vw <= 0 || vh <= 0){
-        try { originalStartVideoScan(canvasId); } catch(e){}
-        return;
-      }
-
-      // Stop any existing stream for this canvasId first (prevents "NotReadableError" on some devices)
-      if (TopCodes._mediaStreams[canvasId]) {
-        try {
-          TopCodes.stopVideoScan(canvasId);
-        } catch(e){}
-      }
-
-      // Build constraints: prefer facingMode, but keep requested resolution.
-      var constraints = {
-        audio: false,
-        video: {
-          width:  { ideal: vw },
-          height: { ideal: vh },
-          facingMode: { ideal: facingMode }   // <-- key addition
-        }
-      };
-
-      navigator.mediaDevices.getUserMedia(constraints)
-        .then(function(mediaStream){
-          videoEl.srcObject = mediaStream;
-          TopCodes._mediaStreams[canvasId] = mediaStream;
-
-          // iOS/Safari friendliness
-          videoEl.playsInline = true;
-          videoEl.muted = true;
-
-          var p = videoEl.play();
-          if (p && typeof p.catch === 'function') p.catch(function(){});
-        })
-        .catch(function(err){
-          console.log("getUserMedia failed with facingMode, retrying without facingMode:", err);
-
-          // Fallback: remove facingMode (some devices/browsers ignore or error)
-          var fallback = {
-            audio: false,
-            video: {
-              width:  { ideal: vw },
-              height: { ideal: vh }
-            }
-          };
-
-          navigator.mediaDevices.getUserMedia(fallback)
-            .then(function(mediaStream){
-              videoEl.srcObject = mediaStream;
-              TopCodes._mediaStreams[canvasId] = mediaStream;
-              videoEl.playsInline = true;
-              videoEl.muted = true;
-
-              var p2 = videoEl.play();
-              if (p2 && typeof p2.catch === 'function') p2.catch(function(){});
-            })
-            .catch(function(err2){
-              console.error("Camera error:", err2);
-              setStatus('Camera error: ' + (err2.message || err2) + '. Check permissions and HTTPS/localhost.');
-              enableBtn.disabled = false;
-              disableBtn.disabled = true;
-              swapBtn.disabled = true;
-              startBtn.disabled = true;
-              cameraActive = false;
-            });
-        });
-    };
-  }
-
-  // ===== TopCodes frame callback =====
+  // ===== Frame callback from TopCodes =====
   function handleFrame(jsonString){
     var data;
     try{ data = JSON.parse(jsonString); }catch(e){ return; }
@@ -583,11 +479,9 @@ tr.done{ background:#e9f6ec }
     var h = canvas.height || 480;
 
     lineY = Math.round(h * 0.5);
-
-    // Deadband around line to avoid jitter (in PIXELS of the canvas)
     var deadband = Math.max(16, Math.round(h * 0.10));
 
-    // Draw red line overlay
+    // Red line overlay
     ctx.save();
     var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
     ctx.strokeStyle = (lineColor || 'red').trim();
@@ -610,29 +504,139 @@ tr.done{ background:#e9f6ec }
       var r = runners[key];
       if (!r || r.finished) continue;
 
-      // Tag centre in canvas pixel coords
       var cy = tc.y;
 
-      // side: -1 above, +1 below, 0 within deadband
       var dy = cy - lineY;
       var side = 0;
       if (dy < -deadband) side = -1;
       else if (dy > deadband) side = +1;
 
-      // Count only on a clear crossing from above -> below
       if (r.lastSide === -1 && side === +1){
         countLap(runnerID);
       }
-
-      // Update lastSide only when clearly outside deadband
       if (side !== 0) r.lastSide = side;
     }
   }
 
+  // ===== THE IMPORTANT FIX =====
+  // Do NOT getUserMedia ourselves.
+  // Let TopCodes do it (so detection works), but inject facingMode into constraints
+  // by temporarily wrapping navigator.mediaDevices.getUserMedia ONLY during start.
+  function startTopCodesWithFacingMode(canvasId){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
+      return false;
+    }
+    if (!window.TopCodes || !TopCodes.startStopVideoScan){
+      setStatus('TopCodes library not loaded.');
+      return false;
+    }
+
+    var md = navigator.mediaDevices;
+    var originalGUM = md.getUserMedia.bind(md);
+
+    md.getUserMedia = function(constraints){
+      try{
+        constraints = constraints || {};
+        var v = constraints.video;
+
+        // TopCodes often passes: { video: { width:{...}, height:{...} }, audio:false }
+        // We keep what TopCodes sets, and add facingMode in a safe way.
+        if (v === true) v = {};
+        if (!v) v = {};
+        if (typeof v !== 'object') v = {};
+
+        // Preserve existing constraints and add facingMode
+        v.facingMode = { ideal: facingMode };
+
+        constraints.video = v;
+        constraints.audio = false;
+      }catch(e){}
+      return originalGUM(constraints);
+    };
+
+    try{
+      // This toggles: if off -> on
+      TopCodes.startStopVideoScan(canvasId);
+      scanningActive = true;
+
+      // Ensure callback is set
+      try{ TopCodes.setVideoFrameCallback(canvasId, handleFrame); }catch(e2){}
+    }catch(e3){
+      console.error(e3);
+      setStatus('Failed to start TopCodes scan: ' + (e3.message || e3));
+      scanningActive = false;
+      // restore
+      md.getUserMedia = originalGUM;
+      return false;
+    } finally {
+      // Restore immediately so we don't break other camera calls
+      md.getUserMedia = originalGUM;
+    }
+
+    // Force video element un-mirrored (some browsers default mirror)
+    setTimeout(function(){
+      var v = document.getElementById(canvasId + '-video');
+      if (v){
+        v.style.transform = 'none';
+        v.style.webkitTransform = 'none';
+        v.playsInline = true;
+        v.muted = true;
+        var p = v.play();
+        if (p && typeof p.catch === 'function') p.catch(function(){});
+      }
+    }, 120);
+
+    return true;
+  }
+
+  function stopTopCodes(canvasId){
+    if (!window.TopCodes || !TopCodes.startStopVideoScan) return;
+    if (!scanningActive) return;
+    try{
+      TopCodes.startStopVideoScan(canvasId); // toggles off
+    }catch(e){}
+    scanningActive = false;
+  }
+
+  function startCamera(){
+    if (cameraActive || starting) return;
+    starting = true;
+
+    resizeCanvas();
+
+    enableBtn.disabled = true;
+    setStatus('Starting camera…');
+
+    var ok = startTopCodesWithFacingMode('view');
+    if (!ok){
+      enableBtn.disabled = false;
+      starting = false;
+      return;
+    }
+
+    // Give TopCodes a moment to initialize the video + begin decoding.
+    setTimeout(function(){
+      cameraActive = true;
+      starting = false;
+
+      enableBtn.disabled  = true;
+      disableBtn.disabled = false;
+      swapBtn.disabled    = false;
+      startBtn.disabled   = false;
+      stopBtn.disabled    = true;
+      exportBtn.disabled  = true;
+      summaryBtn.disabled = true;
+
+      setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') +
+        '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+    }, 250);
+  }
+
   function stopCamera(){
-    if (!cameraActive) return;
-    try { TopCodes.stopVideoScan('view'); } catch(e){}
+    stopTopCodes('view');
     cameraActive = false;
+    starting = false;
 
     enableBtn.disabled  = false;
     disableBtn.disabled = true;
@@ -643,49 +647,8 @@ tr.done{ background:#e9f6ec }
     setStatus('Camera stopped. You can re-enable it again.');
   }
 
-  function startCamera(){
-    if (cameraActive) return;
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
-      return;
-    }
-
-    resizeCanvas();
-    patchTopCodesForFacingMode();
-
-    try{
-      // Use explicit start (not toggle) for predictability
-      TopCodes.startVideoScan('view');
-      TopCodes.setVideoFrameCallback('view', handleFrame);
-
-      cameraActive = true;
-
-      enableBtn.disabled  = true;
-      disableBtn.disabled = false;
-      swapBtn.disabled    = false;
-      startBtn.disabled   = false;
-      stopBtn.disabled    = true;
-      exportBtn.disabled  = true;
-      summaryBtn.disabled = true;
-
-      setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') + '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
-    }catch(e){
-      console.error(e);
-      setStatus('Camera error: ' + (e.message || e) + '. Make sure permissions are granted.');
-      enableBtn.disabled = false;
-      disableBtn.disabled = true;
-      swapBtn.disabled = true;
-      startBtn.disabled = true;
-      cameraActive = false;
-    }
-  }
-
   function restartCamera(){
-    if (!cameraActive) return;
-    // Stop then start (needed to switch cameras)
-    try { TopCodes.stopVideoScan('view'); } catch(e){}
-    cameraActive = false;
+    stopCamera();
     startCamera();
   }
 
@@ -709,11 +672,9 @@ tr.done{ background:#e9f6ec }
   startBtn.addEventListener('click', function(){
     if (counting) return;
 
-    // Lock config during run
     lapsSel.disabled = true;
     distanceInput.disabled = true;
 
-    // reset runners and table
     runners = {};
     while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
 
@@ -733,11 +694,9 @@ tr.done{ background:#e9f6ec }
     counting = false;
     stopTimer();
 
-    // Unlock config after run
     lapsSel.disabled = false;
     distanceInput.disabled = false;
 
-    // Mark unfinished as DNF
     for (var id in runners){
       if (runners.hasOwnProperty(id)){
         var r = runners[id];
@@ -762,8 +721,8 @@ tr.done{ background:#e9f6ec }
 
     var maxLaps = 0;
     for (var idx=0; idx<ids.length; idx++){
-      var r = runners[ids[idx]];
-      if (r.laps.length > maxLaps) maxLaps = r.laps.length;
+      var rr = runners[ids[idx]];
+      if (rr.laps.length > maxLaps) maxLaps = rr.laps.length;
     }
 
     var rows = [];
@@ -774,11 +733,11 @@ tr.done{ background:#e9f6ec }
     var totalRunMeters = runDistanceMeters;
 
     for (idx=0; idx<ids.length; idx++){
-      var id = ids[idx];
-      var rr = runners[id];
-      var total  = rr.totalLaps;
-      var lapsDone = rr.laps.length;
-      var finishMs = lapsDone ? rr.laps[lapsDone-1] : NaN;
+      var rid = ids[idx];
+      var r = runners[rid];
+      var total  = r.totalLaps;
+      var lapsDone = r.laps.length;
+      var finishMs = lapsDone ? r.laps[lapsDone-1] : NaN;
       var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
 
       var totalDist = totalRunMeters;
@@ -791,9 +750,9 @@ tr.done{ background:#e9f6ec }
         paceStrVal = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
       }
 
-      var row = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
+      var row = [rid, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
       for (j=0;j<maxLaps;j++){
-        row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
+        row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
       }
       rows.push(row);
     }
@@ -858,15 +817,9 @@ tr.done{ background:#e9f6ec }
   });
 
   window.addEventListener('resize', function(){
-    var wasActive = cameraActive;
     resizeCanvas();
-
-    // If camera is active, restart to request new resolution matching new canvas size
-    // (keeps view sharp and prevents “small video in big canvas”)
-    if (wasActive){
-      setStatus('Resizing… restarting camera for best quality.');
-      restartCamera();
-    }
+    // Don’t auto-restart camera; it often causes more issues on mobile.
+    // If view looks off after rotate, disable + enable camera once.
   });
 
   window.addEventListener('beforeunload', function(){
