@@ -1,833 +1,520 @@
-<!doctype html>  
-
-<html lang="en">  
-
-<head>  
-
-<meta charset="utf-8" />  
-
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />  
-
-<title>QR Lap Counter — Responsive + Recording</title>  
-
-<style>  
-
-:root{  
-
---accent:#015871;  
-
---bg:#f7f7f7;  
-
---line:red;  
-
-}  
-
-*{ box-sizing:border-box }  
-
-body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:#111 }  
-
-/* App grid switches by orientation */  
-
-.app{ display:grid; min-height:100vh; }  
-
-/* Portrait: top quarter (25vh) for video+controls; bottom for table */  
-
-@media (orientation:portrait){  
-
-.app{  
-
-grid-template-rows: 25vh 1fr;  
-
-grid-template-columns: 1fr;  
-
-grid-template-areas:  
-
-"top"  
-
-"bottom";  
-
-}  
-
-.top{ grid-area: top; }  
-
-.bottom{ grid-area: bottom; }  
-
-}  
-
-/* Landscape: left half for video+controls; right half for table */  
-
-@media (orientation:landscape){  
-
-.app{  
-
-grid-template-columns: 1fr 1fr;  
-
-grid-template-rows: 100vh;  
-
-grid-template-areas:  
-
-"left right";  
-
-}  
-
-.top{ grid-area: left; height:100vh; }  
-
-.bottom{ grid-area: right; height:100vh; }  
-
-}  
-
-/* Video+controls container */  
-
-.top{  
-
-position:relative;  
-
-background:#000;  
-
-overflow:hidden;  
-
-}  
-
-/* We render video + overlays into ONE canvas */  
-
-#view{  
-
-width:100%;  
-
-height:100%;  
-
-display:block;  
-
-background:#000;  
-
-touch-action:none;  
-
-}  
-
-/* Controls overlay: always visible, never hidden by table */  
-
-.controls{  
-
-position:absolute;  
-
-left:0; right:0; top:0;  
-
-z-index:20;  
-
-display:flex; gap:8px; align-items:center; flex-wrap:wrap;  
-
-padding:8px;  
-
-background:linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.80) 90%, rgba(255,255,255,0) 100%);  
-
-border-bottom:1px solid rgba(0,0,0,0.06);  
-
-}  
-
-button{  
-
-background:var(--accent); color:#fff; border:0; border-radius:10px;  
-
-font-weight:700; padding:10px 12px;  
-
-}  
-
-button.secondary{ background:#666 }  
-
-select{  
-
-height:42px; padding:0 10px; border-radius:10px; border:1px solid #ccc; background:#fff; font-weight:600;  
-
-}  
-
-.timer{ font-variant-numeric:tabular-nums; font-weight:700; min-width:78px }  
-
-.spacer{ flex:1 1 auto }  
-
-/* Bottom pane: table + status, independent scroll */  
-
-.bottom{  
-
-display:grid; grid-template-rows: auto 1fr auto; gap:8px; padding:10px;  
-
-min-height:0; /* allow child scrolling */  
-
-}  
-
-.status{  
-
-font-size:13px; color:#333; white-space:pre-wrap;  
-
-background:#fff; border:1px solid #eee; border-radius:10px; padding:8px;  
-
-}  
-
-.tableWrap{  
-
-min-height:0; /* for grid */  
-
-background:#fff; border:1px solid #eee; border-radius:10px; overflow:auto;  
-
-}  
-
-table{ width:100%; border-collapse:collapse; font-size:14px }  
-
-thead th{  
-
-position:sticky; top:0; background:var(--accent); color:#fff; padding:8px; z-index:1;  
-
-}  
-
-td,th{ padding:8px; border-bottom:1px solid #f0f0f0; text-align:center }  
-
-tr.done{ background:#e9f6ec }  
-
-.footerBar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:#444 }  
-
-/* Small screens: keep buttons readable */  
-
-@media (max-width:420px){  
-
-button{ padding:8px 10px }  
-
-.timer{ min-width:66px }  
-
-select{ height:38px }  
-
-}  
-
-</style>  
-
-</head>  
-
-<body>  
-
-<div class="app">  
-
-<section class="top">  
-
-<canvas id="view" aria-label="Camera view with overlay and start line"></canvas>  
-
-<div class="controls">  
-
-<button id="enableBtn">Enable Camera</button>  
-
-<button id="startBtn" class="secondary" disabled>Start</button>  
-
-<button id="stopBtn" class="secondary" disabled>Stop</button>  
-
-<div class="timer" id="timer">00:00</div>  
-
-<label for="lapsSel" style="margin-left:6px;font-size:12px;color:#333">Laps</label>  
-
-<select id="lapsSel" aria-label="Number of laps"></select>  
-
-<button id="exportBtn" class="secondary" disabled>Export CSV</button>  
-
-<span class="spacer"></span>  
-
-<label style="display:flex;align-items:center;gap:6px">  
-
-<input id="showVideo" type="checkbox" />  
-
-<span style="font-size:12px;color:#333">Debug video</span>  
-
-</label>  
-
-</div>  
-
-</section>  
-
-<section class="bottom">  
-
-<div class="status" id="status">Idle. Tap “Enable Camera”.</div>  
-
-<div class="tableWrap">  
-
-<table>  
-
-<thead>  
-
-<tr>  
-
-<th>Runner ID</th>  
-
-<th>Laps</th>  
-
-<th>Finish</th>  
-
-<th>Splits (mm:ss, …)</th>  
-
-</tr>  
-
-</thead>  
-
-<tbody id="tbody"></tbody>  
-
-</table>  
-
-</div>  
-
-<div class="footerBar">  
-
-• Use large matte QR codes • Keep steady as you cross the red line • Good lighting improves scans  
-
-</div>  
-
-</section>  
-
-</div>  
-
-<!-- jsQR: pure JS QR reader -->  
-
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>  
-
-<script>  
-
-(() => {  
-
-// ===== DOM =====  
-
-const canvas = document.getElementById('view');  
-
-const ctx = canvas.getContext('2d', { willReadFrequently:true });  
-
-const statusEl = document.getElementById('status');  
-
-const tbody = document.getElementById('tbody');  
-
-const timerEl = document.getElementById('timer');  
-
-const enableBtn= document.getElementById('enableBtn');  
-
-const startBtn = document.getElementById('startBtn');  
-
-const stopBtn = document.getElementById('stopBtn');  
-
-const exportBtn= document.getElementById('exportBtn');  
-
-const lapsSel = document.getElementById('lapsSel');  
-
-const showVideoCb = document.getElementById('showVideo');  
-
-// Populate laps 1..20 (default 4)  
-
-for(let i=1;i<=20;i++){  
-
-const opt=document.createElement('option'); opt.value=i; opt.textContent=i; if(i===4) opt.selected=true;  
-
-lapsSel.appendChild(opt);  
-
-}  
-
-// ===== State =====  
-
-let stream=null, video=null;  
-
-let cw=640, ch=360; // canvas pixel size (we’ll set properly at runtime)  
-
-let lineY=0; // start line (canvas pixels)  
-
-let running=false, counting=false, startTime=0, tick=null;  
-
-let frameCount=0;  
-
-const runners=new Map(); // id -> {laps: [ms], finished: bool, lastTs: number}  
-
-const COOLDOWN=1200; // ms per runner to prevent double-counts  
-
-const SCAN_EVERY=2; // scan band every frame; full-frame every N=6 below  
-
-const FULLFRAME_EVERY=6;  
-
-// Recording from canvas (includes overlays)  
-
-let recorder=null, recordedChunks=[];  
-
-// Optional debug raw <video>  
-
-let debugVideo=null;  
-
-// ===== Helpers =====  
-
-const setStatus=(...a)=>{ const t=a.join(' '); statusEl.textContent=t; console.log(t); };  
-
-const msToMMSS=(ms)=>{ const s=Math.floor(ms/1000); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };  
-
-function ensureRunner(id){  
-
-if (!runners.has(id)){  
-
-runners.set(id, { laps:[], finished:false, lastTs:0 });  
-
-const tr=document.createElement('tr'); tr.id='r-'+CSS.escape(id);  
-
-tr.innerHTML = `  
-
-<td>${id}</td>  
-
-<td id="laps-${id}">0</td>  
-
-<td id="fin-${id}">-</td>  
-
-<td id="splits-${id}">-</td>  
-
-`;  
-
-tbody.appendChild(tr);  
-
-}  
-
-}  
-
-function updateRunnerRow(id){  
-
-const r = runners.get(id);  
-
-const lapsCount = r.laps.length;  
-
-document.getElementById(`laps-${id}`).textContent = lapsCount;  
-
-document.getElementById(`fin-${id}`).textContent = lapsCount ? msToMMSS(r.laps[lapsCount-1]) : '-';  
-
-document.getElementById(`splits-${id}`).textContent = lapsCount ? r.laps.map(msToMMSS).join(' | ') : '-';  
-
-if (r.finished) document.getElementById('r-'+id)?.classList.add('done');  
-
-}  
-
-function countLap(id){  
-
-const now = Date.now();  
-
-const r = runners.get(id);  
-
-const req = parseInt(lapsSel.value,10);  
-
-if (r.finished) return;  
-
-if (now - r.lastTs < COOLDOWN) return;  
-
-r.laps.push(now - startTime);  
-
-r.lastTs = now;  
-
-if (r.laps.length >= req) r.finished = true;  
-
-updateRunnerRow(id);  
-
-setStatus(`Runner ${id} → Lap ${r.laps.length}${r.finished ? ' (Finished)' : ''}`);  
-
-}  
-
-function startRecording(){  
-
-recordedChunks=[];  
-
-const stream = canvas.captureStream ? canvas.captureStream(30) : null;  
-
-if (!stream){ setStatus('Recording not supported on this browser.'); return; }  
-
-const candidates=[  
-
-'video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'  
-
-];  
-
-let mime=''; for(const m of candidates){ if (MediaRecorder.isTypeSupported(m)) { mime=m; break; } }  
-
-try{  
-
-recorder = new MediaRecorder(stream, mime?{mimeType:mime}:{});  
-
-}catch(e){ setStatus('MediaRecorder failed: '+(e.message||e)); recorder=null; return; }  
-
-recorder.ondataavailable = e=>{ if (e.data && e.data.size) recordedChunks.push(e.data); };  
-
-recorder.onstop = ()=>{  
-
-if (!recordedChunks.length){ setStatus('No recording data.'); return; }  
-
-const blob = new Blob(recordedChunks, { type: recordedChunks[0].type || 'video/webm' });  
-
-const url = URL.createObjectURL(blob);  
-
-const a = document.createElement('a');  
-
-a.href = url; a.download = `run_session_${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;  
-
-document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);  
-
-setStatus('Recording saved.');  
-
-};  
-
-recorder.start();  
-
-setStatus('Recording started.');  
-
-}  
-
-function stopRecording(){ try{ recorder && recorder.state!=='inactive' && recorder.stop(); }catch(e){} }  
-
-// ===== Camera =====  
-
-async function enableCamera(){  
-
-if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){  
-
-setStatus('getUserMedia not supported.'); return;  
-
-}  
-
-setStatus('Requesting camera…');  
-
-try{  
-
-stream = await navigator.mediaDevices.getUserMedia({  
-
-video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },  
-
-audio:false  
-
-});  
-
-}catch(e){ setStatus('Camera error: '+(e.message||e)); return; }  
-
-video = document.createElement('video');  
-
-video.srcObject = stream; video.playsInline = true; video.muted = true;  
-
-await video.play().catch(()=>{});  
-
-await new Promise(r=>{ if (video.readyState>=2) r(); else video.onloadedmetadata=r; });  
-
-resizeCanvasToLayout(); // set canvas pixels to its CSS box  
-
-enableBtn.disabled = true; startBtn.disabled = false; stopBtn.disabled = true; exportBtn.disabled = true;  
-
-// Optional debug preview  
-
-if (showVideoCb.checked){  
-
-if (!debugVideo){  
-
-debugVideo = document.createElement('video');  
-
-debugVideo.style.position='fixed';  
-
-debugVideo.style.right='8px';  
-
-debugVideo.style.top='8px';  
-
-debugVideo.style.width='160px';  
-
-debugVideo.style.border='2px solid #fff';  
-
-debugVideo.style.zIndex=9999;  
-
-document.body.appendChild(debugVideo);  
-
-}  
-
-debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();  
-
-}  
-
-running = true;  
-
-requestAnimationFrame(loop);  
-
-setStatus('Camera ready. Aim QR at red line. Press Start to time & record.');  
-
-}  
-
-// Size canvas to its displayed size with devicePixelRatio, keep line at 50%  
-
-function resizeCanvasToLayout(){  
-
-const rect = canvas.getBoundingClientRect();  
-
-const dpr = window.devicePixelRatio || 1;  
-
-cw = Math.max(320, Math.floor(rect.width * dpr));  
-
-ch = Math.max(240, Math.floor(rect.height * dpr));  
-
-canvas.width = cw; canvas.height = ch;  
-
-lineY = Math.round(ch * 0.5);  
-
-}  
-
-window.addEventListener('resize', resizeCanvasToLayout);  
-
-// Draw video covering canvas while preserving aspect (like CSS background-size: cover)  
-
-function drawVideoCover(video, canvas, ctx){  
-
-const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;  
-
-const cw = canvas.width, ch = canvas.height;  
-
-const vr = vw/vh, cr = cw/ch;  
-
-let sx=0, sy=0, sw=vw, sh=vh;  
-
-if (cr > vr){ sh = Math.round(vw/cr); sy = Math.floor((vh-sh)/2); }  
-
-else { sw = Math.round(vh*cr); sx = Math.floor((vw-sw)/2); }  
-
-try{ ctx.drawImage(video, sx,sy,sw,sh, 0,0,cw,ch); }catch(e){}  
-
-}  
-
-// ===== Main loop: draw frame → line → scan QR =====  
-
-function loop(){  
-
-if (!running) return;  
-
-// video frame  
-
-if (video && video.readyState>=2) drawVideoCover(video, canvas, ctx);  
-
-else ctx.clearRect(0,0,cw,ch);  
-
-// red start line  
-
-ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || 'red';  
-
-ctx.lineWidth = Math.max(3, ch/220);  
-
-ctx.beginPath(); ctx.moveTo(0,lineY); ctx.lineTo(cw,lineY); ctx.stroke();  
-
-// detection (band every 2nd frame, full-frame every 6th)  
-
-frameCount++;  
-
-if (video && video.readyState>=2){  
-
-let qr = null;  
-
-if (frameCount % FULLFRAME_EVERY === 0){  
-
-const frame = ctx.getImageData(0,0,cw,ch);  
-
-qr = jsQR(frame.data, frame.width, frame.height, { inversionAttempts: "attemptBoth" });  
-
-} else if (frameCount % SCAN_EVERY === 0){  
-
-const bandH = Math.max(Math.floor(ch*0.4), 120); // big band (40% of height)  
-
-const y0 = Math.max(0, lineY - Math.floor(bandH/2));  
-
-const imgData = ctx.getImageData(0, y0, cw, bandH);  
-
-qr = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });  
-
-if (qr){  
-
-// Convert band coords back to canvas coords  
-
-const P = qr.location;  
-
-const adj = (p)=>({x:p.x, y:p.y + y0});  
-
-qr.location = {  
-
-topLeftCorner: adj(P.topLeftCorner),  
-
-topRightCorner: adj(P.topRightCorner),  
-
-bottomRightCorner: adj(P.bottomRightCorner),  
-
-bottomLeftCorner: adj(P.bottomLeftCorner)  
-
-};  
-
-}  
-
-}  
-
-if (qr && qr.data){  
-
-const pts = qr.location;  
-
-const cx = (pts.topLeftCorner.x + pts.topRightCorner.x + pts.bottomLeftCorner.x + pts.bottomRightCorner.x) / 4;  
-
-const cy = (pts.topLeftCorner.y + pts.topRightCorner.y + pts.bottomLeftCorner.y + pts.bottomRightCorner.y) / 4;  
-
-// visualize  
-
-ctx.save();  
-
-ctx.strokeStyle='lime'; ctx.lineWidth=Math.max(2, ch/360);  
-
-ctx.beginPath();  
-
-ctx.moveTo(pts.topLeftCorner.x, pts.topLeftCorner.y);  
-
-ctx.lineTo(pts.topRightCorner.x, pts.topRightCorner.y);  
-
-ctx.lineTo(pts.bottomRightCorner.x, pts.bottomRightCorner.y);  
-
-ctx.lineTo(pts.bottomLeftCorner.x, pts.bottomLeftCorner.y);  
-
-ctx.closePath(); ctx.stroke();  
-
-ctx.fillStyle='rgba(0,255,0,0.25)';  
-
-ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, ch/200), 0, Math.PI*2); ctx.fill();  
-
-ctx.restore();  
-
-// near line → count  
-
-if (Math.abs(cy - lineY) < Math.max(16, ch/10)){  
-
-const id = String(qr.data).trim();  
-
-if (id){  
-
-ensureRunner(id);  
-
-countLap(id);  
-
-}  
-
-}  
-
-}  
-
-}  
-
-requestAnimationFrame(loop);  
-
-}  
-
-// ===== Buttons =====  
-
-enableBtn.addEventListener('click', async ()=>{  
-
-enableBtn.disabled = true;  
-
-await enableCamera();  
-
-});  
-
-startBtn.addEventListener('click', ()=>{  
-
-if (!stream){ setStatus('Enable camera first.'); return; }  
-
-if (counting) return;  
-
-counting = true; startTime = Date.now();  
-
-timerEl.textContent = '00:00';  
-
-tick = setInterval(()=>{ timerEl.textContent = msToMMSS(Date.now()-startTime); }, 1000);  
-
-startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;  
-
-startRecording();  
-
-});  
-
-stopBtn.addEventListener('click', ()=>{  
-
-if (!counting) return;  
-
-counting=false; clearInterval(tick); tick=null;  
-
-startBtn.disabled=false; stopBtn.disabled=true; exportBtn.disabled=false;  
-
-stopRecording();  
-
-setStatus('Stopped. You can export CSV now.');  
-
-});  
-
-exportBtn.addEventListener('click', ()=>{  
-
-// Build CSV with per-lap splits  
-
-const rows=[];  
-
-const maxLaps = Array.from(runners.values()).reduce((m,r)=>Math.max(m, r.laps.length), 0);  
-
-rows.push(['Runner ID','Total Laps','Finish', ...Array.from({length:maxLaps},(_,i)=>`Lap ${i+1}`)]);  
-
-for (const [id, r] of runners.entries()){  
-
-const finish = r.laps.length ? msToMMSS(r.laps[r.laps.length-1]) : '-';  
-
-rows.push([id, String(r.laps.length), finish, ...r.laps.map(msToMMSS)]);  
-
-}  
-
-const csv = rows.map(r=>r.map(c=>{  
-
-const s=String(c); return s.includes(',') ? `"${s.replace(/"/g,'""')}"` : s;  
-
-}).join(',')).join('\n');  
-
-const blob = new Blob([csv], { type:'text/csv' });  
-
-const url = URL.createObjectURL(blob);  
-
-const a = document.createElement('a');  
-
-a.href=url; a.download = `qr_laps_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;  
-
-document.body.appendChild(a); a.click(); a.remove();  
-
-URL.revokeObjectURL(url);  
-
-});  
-
-showVideoCb.addEventListener('change', ()=>{  
-
-if (!stream) return;  
-
-if (showVideoCb.checked){  
-
-if (!debugVideo){  
-
-debugVideo = document.createElement('video');  
-
-debugVideo.style.position='fixed';  
-
-debugVideo.style.right='8px';  
-
-debugVideo.style.top='8px';  
-
-debugVideo.style.width='160px';  
-
-debugVideo.style.border='2px solid #fff';  
-
-debugVideo.style.zIndex=9999;  
-
-document.body.appendChild(debugVideo);  
-
-}  
-
-debugVideo.srcObject = stream; debugVideo.muted=true; debugVideo.playsInline=true; debugVideo.play();  
-
-}else{  
-
-if (debugVideo){ debugVideo.pause(); debugVideo.srcObject=null; debugVideo.remove(); debugVideo=null; }  
-
-}  
-
-});  
-
-})();  
-
-</script>  
-
-</body>  
-
-</html> 
-
+<!doctype html> 
+<html lang="en"> 
+<head> 
+<meta charset="utf-8" /> 
+<meta name="viewport" 
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" /> 
+<title>Lap Analysis — Detailed Summary</title> 
+<style> 
+:root{ 
+  --accent:#015871; 
+  --bg:#f7f7f7; 
+} 
+*{ box-sizing:border-box } 
+body{ 
+  margin:0; 
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; 
+  background:#f7f7f7; 
+  color:#111; 
+} 
+header{ 
+  background:#fff; 
+  border-bottom:1px solid #ddd; 
+  padding:12px 16px; 
+  position:sticky; 
+  top:0; 
+  z-index:10; 
+} 
+header h1{ 
+  margin:0; 
+  font-size:20px; 
+} 
+header .meta{ 
+  font-size:13px; 
+  color:#555; 
+  margin-top:4px; 
+} 
+main{ 
+  max-width:1000px; 
+  margin:0 auto; 
+  padding:12px 16px 24px; 
+} 
+.section{ 
+  background:#fff; 
+  border-radius:10px; 
+  border:1px solid #e6e6e6; 
+  padding:12px 14px 14px; 
+  margin-bottom:16px; 
+} 
+.section h2{ 
+  margin:0 0 6px; 
+  font-size:18px; 
+  color:#033649; 
+} 
+.section h3{ 
+  margin:10px 0 4px; 
+  font-size:15px; 
+} 
+.badge{ 
+  display:inline-block; 
+  font-size:12px; 
+  border-radius:999px; 
+  padding:3px 9px; 
+  margin-right:6px; 
+  margin-bottom:4px; 
+  background:#eee; 
+} 
+.runner-list{ 
+  font-size:13px; 
+  margin:4px 0 6px; 
+} 
+.runner-list span{ 
+  display:inline-block; 
+  margin-right:6px; 
+} 
+.small{ 
+  font-size:12px; 
+  color:#555; 
+} 
+p{ 
+  font-size:14px; 
+  margin:4px 0; 
+} 
+.button-row{ 
+  margin-top:8px; 
+} 
+button{ 
+  background:var(--accent); 
+  color:#fff; 
+  border:0; 
+  border-radius:999px; 
+  font-weight:600; 
+  padding:8px 14px; 
+  font-size:14px; 
+  cursor:pointer; 
+} 
+button.secondary{ 
+  background:#666; 
+} 
+.code{ 
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+  background:#f1f1f1; 
+  padding:2px 4px; 
+  border-radius:4px; 
+  font-size:12px; 
+} 
+.empty{ 
+  font-size:14px; 
+  color:#666; 
+} 
+ul{ 
+  margin:4px 0 4px 18px; 
+  padding:0; 
+  font-size:14px; 
+} 
+</style> 
+</head> 
+<body> 
+<header> 
+  <h1>Detailed Lap Summary</h1> 
+  <div class="meta" id="metaText">Loading run data…</div> 
+  <div class="button-row"> 
+    <button onclick="window.location.href='index.html'">Back to Lap Counter</button> 
+  </div> 
+</header> 
  
+<main id="content"> 
+  <!-- Sections injected by JS --> 
+</main> 
+ 
+<script> 
+(function(){ 
+  var contentEl = document.getElementById('content'); 
+  var metaText  = document.getElementById('metaText'); 
+ 
+  function msToMMSS(ms){ 
+    var s = Math.floor(ms/1000); 
+    var m = Math.floor(s/60); 
+    var ss= s % 60; 
+    return (m<10?'0':'')+m + ':' + (ss<10?'0':'')+ss; 
+  } 
+ 
+  function paceStr(totalSec, distM){ 
+    if (!isFinite(totalSec) || !distM || distM <= 0) return '-'; 
+    var paceSecPerKm = totalSec / (distM/1000); 
+    var m = Math.floor(paceSecPerKm/60); 
+    var s = Math.round(paceSecPerKm%60); 
+    return m + ':' + (s<10?'0':'')+s + ' min/km'; 
+  } 
+ 
+  function createSection(title){ 
+    var div = document.createElement('div'); 
+    div.className = 'section'; 
+    var h2 = document.createElement('h2'); 
+    h2.textContent = title; 
+    div.appendChild(h2); 
+    return div; 
+  } 
+ 
+  // Load data from localStorage 
+  var raw = null; 
+  try{ 
+    raw = localStorage.getItem('topcodesLapSummaryV1'); 
+  }catch(e){} 
+ 
+  if (!raw){ 
+    metaText.textContent = 'No saved run data found. Please run a session and click "Detailed Summary" from the main page.'; 
+    var sec = createSection('No Data'); 
+    sec.innerHTML += '<p class="empty">There is no stored summary for analysis. Return to the lap counter, run a test, then tap <span class="code">Detailed Summary</span>.</p>'; 
+    contentEl.appendChild(sec); 
+    return; 
+  } 
+ 
+  var data = null; 
+  try{ 
+    data = JSON.parse(raw); 
+  }catch(e){ 
+    metaText.textContent = 'Saved data is corrupted or unreadable.'; 
+    var sec2 = createSection('Error'); 
+    sec2.innerHTML += '<p class="empty">The stored data could not be parsed. Please re-run a session and generate a new summary.</p>'; 
+    contentEl.appendChild(sec2); 
+    return; 
+  } 
+ 
+  var runDist = data.runDistanceMeters || 1600; 
+  var lapsConfig = data.lapsConfig || null; 
+  var runnersRaw = data.runners || []; 
+ 
+  metaText.textContent = 
+    'Run distance ' + runDist + ' m · ' + 
+    (lapsConfig ? (lapsConfig + ' laps planned') : 'laps: variable') + 
+    ' · ' + runnersRaw.length + ' runner(s) recorded'; 
+ 
+  // Process runners: compute lap times, total time, pattern category (Group B) 
+  var EVEN_RANGE_SEC = 4;     // if lap range <= 4s -> even 
+  var POS_NEG_DIFF   = 3;     // min diff to call positive/negative 
+  var DRIFT_MIN_DIFF = 5;     // min total drift for "pacing drift" 
+  var STEP_TOL       = 1.5;   // tolerance for monotonic checks 
+ 
+  function classifyPattern(r){ 
+    var splits = r.splitsMs || []; 
+    if (!r.finished || !splits.length || splits.length < 2){ 
+      return 'incomplete'; 
+    } 
+    var lapTimesSec = []; 
+    for (var i=0;i<splits.length;i++){ 
+      var prev = (i===0 ? 0 : splits[i-1]); 
+      lapTimesSec.push((splits[i]-prev)/1000); 
+    } 
+    if (lapTimesSec.length < 2) return 'incomplete'; 
+ 
+    var first = lapTimesSec[0]; 
+    var last  = lapTimesSec[lapTimesSec.length-1]; 
+ 
+    var minLap = lapTimesSec[0]; 
+    var maxLap = lapTimesSec[0]; 
+    var sumLap = 0; 
+    for (var j=0;j<lapTimesSec.length;j++){ 
+      var v = lapTimesSec[j]; 
+      if (v < minLap) minLap = v; 
+      if (v > maxLap) maxLap = v; 
+      sumLap += v; 
+    } 
+    var range = maxLap - minLap; 
+    var mean  = sumLap / lapTimesSec.length; 
+ 
+    var isMonotonicSlower = true; 
+    var isMonotonicFaster = true; 
+    for (j=1;j<lapTimesSec.length;j++){ 
+      if (lapTimesSec[j] + STEP_TOL < lapTimesSec[j-1]){ 
+        isMonotonicSlower = false; 
+      } 
+      if (lapTimesSec[j] > lapTimesSec[j-1] + STEP_TOL){ 
+        isMonotonicFaster = false; 
+      } 
+    } 
+    var drift = last - first; // +ve = slower over time 
+ 
+    // Group B rules 
+    if (range <= EVEN_RANGE_SEC){ 
+      return 'even'; // Even pacing 
+    } 
+ 
+    if (first + POS_NEG_DIFF < last){ 
+      return 'positive'; // positive split: fast start, slow end 
+    } 
+ 
+    if (last + POS_NEG_DIFF < first){ 
+      return 'negative'; // negative split: slow start, faster finish 
+    } 
+ 
+    if (isMonotonicSlower && drift >= DRIFT_MIN_DIFF){ 
+      return 'drift'; // consistent slowing 
+    } 
+ 
+    return 'erratic'; // inconsistent 
+  } 
+ 
+  var groups = { 
+    even: [], 
+    positive: [], 
+    negative: [], 
+    drift: [], 
+    erratic: [], 
+    incomplete: [] 
+  }; 
+ 
+  var runnerSummaries = runnersRaw.map(function(r){ 
+    var splits = r.splitsMs || []; 
+    var totalMs = splits.length ? splits[splits.length-1] : NaN; 
+    var lapTimesSec = []; 
+    for (var i=0;i<splits.length;i++){ 
+      var prev = (i===0 ? 0 : splits[i-1]); 
+      lapTimesSec.push((splits[i]-prev)/1000); 
+    } 
+    var cat = classifyPattern(r); 
+ 
+    var totalSec = isFinite(totalMs) ? totalMs/1000 : NaN; 
+    var pace = paceStr(totalSec, runDist); 
+ 
+    var obj = { 
+      id: r.id, 
+      totalLapsPlanned: r.totalLaps, 
+      finished: !!r.finished, 
+      splitsMs: splits, 
+      lapTimesSec: lapTimesSec, 
+      totalMs: totalMs, 
+      totalSec: totalSec, 
+      pace: pace, 
+      category: cat 
+    }; 
+    groups[cat].push(obj); 
+    return obj; 
+  }); 
+ 
+  function runnersLabel(list){ 
+    if (!list.length) return 'None'; 
+    return list.map(function(r){ return '#'+r.id; }).join(', '); 
+  } 
+ 
+  // ========== Section: Overview ========== 
+  var overview = createSection('Overview'); 
+  overview.innerHTML += 
+    '<p>This summary groups runners by <strong>pacing pattern</strong> and explains what it means for their fitness, energy systems, and running habits, in student-friendly language.</p>' + 
+    '<p>Each group below lists the <span class="code">Runner IDs</span> (e.g. #3, #7) that behaved in a similar way during the run.</p>'; 
+  contentEl.appendChild(overview); 
+ 
+  // Helper to add group block 
+  function addGroupBlock(title, key, descriptionHtml, coachingHtml){ 
+    var list = groups[key]; 
+    if (!list || !list.length) return; 
+ 
+    var sec = createSection(title); 
+    var rl = document.createElement('div'); 
+    rl.className = 'runner-list'; 
+    rl.innerHTML = '<strong>Runners:</strong> ' + runnersLabel(list); 
+    sec.appendChild(rl); 
+ 
+    var desc = document.createElement('div'); 
+    desc.innerHTML = descriptionHtml; 
+    sec.appendChild(desc); 
+ 
+    if (coachingHtml){ 
+      var coach = document.createElement('div'); 
+      coach.innerHTML = coachingHtml; 
+      sec.appendChild(coach); 
+    } 
+ 
+    // Small note about what to tell students 
+    var note = document.createElement('p'); 
+    note.className = 'small'; 
+    note.textContent = 'Tip: Use these points to explain to students how their pacing affects energy systems, fatigue, and performance in simple terms they can understand.'; 
+    sec.appendChild(note); 
+ 
+    contentEl.appendChild(sec); 
+  } 
+ 
+  // ========== Even Pacers ========== 
+  addGroupBlock( 
+    'Even Pacers (Very Consistent Splits)', 
+    'even', 
+    '<h3>What their pacing shows</h3>' + 
+    '<ul>' + 
+      '<li><strong>Even pacing</strong>: each lap is within about ±2–3 seconds of the others.</li>' + 
+      '<li>This is the most <strong>efficient pacing strategy</strong> for distance runs like 1.6 km or 2.4 km.</li>' + 
+      '<li>They are likely using their <strong>aerobic system</strong> well, without going too fast at the start.</li>' + 
+      '<li>Shows good <strong>discipline</strong> and the ability to ignore adrenaline and peer pressure at the start.</li>' + 
+    '</ul>' + 
+    '<h3>What it suggests about fitness & technique</h3>' + 
+    '<ul>' + 
+      '<li><strong>Energy systems:</strong> Their aerobic base is decent; they are not “blowing up” halfway through.</li>' + 
+      '<li><strong>Technique:</strong> Stable cadence, stride length and breathing rhythm are likely, because pace is steady.</li>' + 
+      '<li><strong>Mental skills:</strong> Good focus and pacing awareness, not easily carried away by others sprinting off.</li>' + 
+    '</ul>', 
+    '<h3>How to coach this group</h3>' + 
+    '<ul>' + 
+      '<li>Affirm that even pacing is excellent for distance events.</li>' + 
+      '<li>Set <strong>SMART goals</strong> like: “Keep every lap within 3 seconds of 1:40 next session.”</li>' + 
+      '<li>Suggested workouts:' + 
+        '<ul>' + 
+          '<li><strong>Tempo runs</strong> at a steady pace (comfortably hard, but sustainable).</li>' + 
+          '<li><strong>Race-pace intervals</strong> (e.g., 3 × 600 m at target pace with short rest).</li>' + 
+        '</ul>' + 
+      '</li>' + 
+      '<li>Encourage them to notice how good posture, relaxed arms and rhythmic breathing help them maintain even splits.</li>' + 
+    '</ul>' 
+  ); 
+ 
+  // ========== Positive Split ========== 
+  addGroupBlock( 
+    'Positive Split Runners (Fast Start → Slower Finish)', 
+    'positive', 
+    '<h3>What their pacing shows</h3>' + 
+    '<ul>' + 
+      '<li>The first lap(s) are <strong>much faster</strong> than the later laps.</li>' + 
+      '<li>This suggests they started above their sustainable pace and <strong>slowed down a lot</strong> later.</li>' + 
+      '<li>They likely hit their <strong>anaerobic glycolytic system</strong> too early, causing heavy legs and burning feeling.</li>' + 
+      '<li>This is common when students sprint at the start due to excitement, competition or poor pacing awareness.</li>' + 
+    '</ul>' + 
+    '<h3>What it suggests about fitness & mindset</h3>' + 
+    '<ul>' + 
+      '<li><strong>Energy systems:</strong> Early fast lap = high lactate; big drop in Lap 2 or 3 shows poor pacing control.</li>' + 
+      '<li><strong>Fatigue:</strong> Their body can produce speed, but struggles to <strong>hold that pace</strong> for the whole distance.</li>' + 
+      '<li><strong>Mental skills:</strong> They may chase others too aggressively, or fear “falling behind” at the start.</li>' + 
+    '</ul>', 
+    '<h3>How to coach this group</h3>' + 
+    '<ul>' + 
+      '<li>Teach them: “For distance runs, <strong>starting 5–10% slower</strong> than goal pace is often better.”</li>' + 
+      '<li>Suggested workouts:' + 
+        '<ul>' + 
+          '<li><strong>Pacing practice runs</strong>: run the same loop multiple times aiming for identical lap splits.</li>' + 
+          '<li><strong>Progression runs</strong>: start easier and finish slightly faster to train control and patience.</li>' + 
+          '<li><strong>Tempo runs</strong>: steady pace just below “too hard” to improve threshold and reduce early burnout.</li>' + 
+        '</ul>' + 
+      '</li>' + 
+      '<li>Explain that sprinting the first 30–50 m of a long run mainly uses the <strong>phosphagen system</strong>, which only lasts 5–10 seconds and doesn’t help for 1.6 km performance.</li>' + 
+    '</ul>' 
+  ); 
+ 
+  // ========== Negative Split ========== 
+  addGroupBlock( 
+    'Negative Split Runners (Slow Start → Faster Finish)', 
+    'negative', 
+    '<h3>What their pacing shows</h3>' + 
+    '<ul>' + 
+      '<li>They start a bit slower and <strong>speed up</strong> in the later laps.</li>' + 
+      '<li>This usually means <strong>good aerobic capacity</strong> and the confidence to hold back early.</li>' + 
+      '<li>They may also be unsure at the start and only realise they can push harder halfway through.</li>' + 
+    '</ul>' + 
+    '<h3>What it suggests about fitness & mindset</h3>' + 
+    '<ul>' + 
+      '<li><strong>Energy systems:</strong> Aerobic system is working well; they can still tap into anaerobic power near the end for a strong finish.</li>' + 
+      '<li><strong>Fatigue tolerance:</strong> Finishing strong shows they can handle discomfort and push in the last lap.</li>' + 
+      '<li><strong>Mental skills:</strong> Negative splits show <strong>confidence</strong> and good judgement, especially if the final lap is the fastest.</li>' + 
+    '</ul>', 
+    '<h3>How to coach this group</h3>' + 
+    '<ul>' + 
+      '<li>Affirm that this is often a <strong>smart race strategy</strong>, especially in competitive runs.</li>' + 
+      '<li>Help them fine-tune: maybe start just a bit closer to their goal pace so they don’t leave too much “unused” energy.</li>' + 
+      '<li>Suggested workouts:' + 
+        '<ul>' + 
+          '<li><strong>Race-pace intervals</strong> (e.g., 4 × 400 m at goal pace with short rests).</li>' + 
+          '<li><strong>Speed endurance reps</strong> (200–300 m) to sharpen their finishing kick.</li>' + 
+        '</ul>' + 
+      '</li>' + 
+      '<li>Use their data to set <strong>SMART goals</strong>, like: “Next time, try to keep laps within 3 seconds, but keep a strong finish.”</li>' + 
+    '</ul>' 
+  ); 
+ 
+  // ========== Pacing Drift ========== 
+  addGroupBlock( 
+    'Pacing Drift (Each Lap Getting Slower)', 
+    'drift', 
+    '<h3>What their pacing shows</h3>' + 
+    '<ul>' + 
+      '<li>Laps get <strong>progressively slower</strong>, even if the first lap is not extremely fast.</li>' + 
+      '<li>This can indicate <strong>fatigue building up</strong> due to a weaker aerobic base or going slightly too fast early on.</li>' + 
+      '<li>It may also signal that their <strong>running technique breaks down</strong> as they get tired.</li>' + 
+    '</ul>' + 
+    '<h3>What it suggests about fitness & technique</h3>' + 
+    '<ul>' + 
+      '<li><strong>Energy systems:</strong> Aerobic capacity may not yet be strong enough to maintain pace across all laps.</li>' + 
+      '<li><strong>Technique:</strong> As they fatigue, posture, cadence and breathing rhythm may deteriorate, making running less efficient.</li>' + 
+      '<li><strong>Recovery habits:</strong> Poor sleep, hydration or warm-up might also contribute to slower late laps.</li>' + 
+    '</ul>', 
+    '<h3>How to coach this group</h3>' + 
+    '<ul>' + 
+      '<li>Explain the idea of <strong>aerobic endurance</strong>: being able to hold a steady pace for the whole distance.</li>' + 
+      '<li>Suggested workouts:' + 
+        '<ul>' + 
+          '<li><strong>Aerobic endurance runs</strong>: slightly longer, easy runs to build base fitness.</li>' + 
+          '<li><strong>Longer intervals</strong> (e.g., 2 × 1.2 km) at a controlled pace to practise holding form and rhythm.</li>' + 
+          '<li><strong>Fartlek sessions</strong>: varying speeds but focusing on keeping the “steady” sections smooth and relaxed.</li>' + 
+        '</ul>' + 
+      '</li>' + 
+      '<li>Use their splits to highlight when their form likely breaks down (e.g., “Lap 3 got 10 seconds slower – that might be where your posture and breathing changed.”).</li>' + 
+    '</ul>' 
+  ); 
+ 
+  // ========== Erratic / Inconsistent ========== 
+  addGroupBlock( 
+    'Erratic / Inconsistent Pacers', 
+    'erratic', 
+    '<h3>What their pacing shows</h3>' + 
+    '<ul>' + 
+      '<li>Their lap times jump up and down with no clear pattern.</li>' + 
+      '<li>This might be due to <strong>surges</strong> (speeding up, then suddenly slowing down), distractions, or giving up halfway then speeding up again.</li>' + 
+      '<li>It could also be linked to <strong>mental focus</strong> – finding it hard to stay “locked in” to a steady rhythm.</li>' + 
+    '</ul>' + 
+    '<h3>What it suggests about mindset & preparation</h3>' + 
+    '<ul>' + 
+      '<li><strong>Discipline:</strong> Inconsistent splits often mean they haven’t fully learned how to pace themselves yet.</li>' + 
+      '<li><strong>Focus:</strong> Losing concentration, chatting to friends, or reacting too much to others can disrupt pacing.</li>' + 
+      '<li><strong>Warm-up quality:</strong> If Lap 1 is slow but Lap 2 or 3 are suddenly fast, they may not have warmed up properly.</li>' + 
+    '</ul>', 
+    '<h3>How to coach this group</h3>' + 
+    '<ul>' + 
+      '<li>Give them a <strong>simple target</strong>: “Try to keep each lap within 3–4 seconds of 1:50.”</li>' + 
+      '<li>Suggested workouts:' + 
+        '<ul>' + 
+          '<li><strong>Pacing games / fartlek</strong> where they must hit a specific time repeatedly.</li>' + 
+          '<li><strong>400 m repeats</strong> at a steady pace, focusing on rhythm and relaxed breathing.</li>' + 
+        '</ul>' + 
+      '</li>' + 
+      '<li>Teach mental skills like having a <strong>focus cue</strong> (“tall posture, quick feet, calm breathing”) each time they pass the teacher.</li>' + 
+      '<li>Remind them that a proper warm-up (jog + dynamic drills + 2 × 50 m strides) helps the first lap feel smoother.</li>' + 
+    '</ul>' 
+  ); 
+ 
+  // ========== Incomplete ========== 
+  if (groups.incomplete && groups.incomplete.length){ 
+    var incompleteSec = createSection('Incomplete Runs / Limited Data'); 
+    var rl2 = document.createElement('div'); 
+    rl2.className = 'runner-list'; 
+    rl2.innerHTML = '<strong>Runners:</strong> ' + runnersLabel(groups.incomplete); 
+    incompleteSec.appendChild(rl2); 
+    incompleteSec.innerHTML += 
+      '<p>These runners did not complete all laps or do not have enough split data to clearly identify a pacing pattern.</p>' + 
+      '<ul>' + 
+        '<li>They may have stopped early, walked large portions, or left the track.</li>' + 
+        '<li>Use this as a chance to discuss <strong>effort, perseverance</strong> and realistic goal-setting.</li>' + 
+        '<li>Encourage them to finish the full distance next time, even if the pace is slower.</li>' + 
+      '</ul>'; 
+    contentEl.appendChild(incompleteSec); 
+  } 
+ 
+  // ========== Closing section ========== 
+  var closing = createSection('Using This Data With Students'); 
+  closing.innerHTML += 
+    '<p>Split times are not just numbers — they tell a story about each student\'s <strong>pacing strategy, energy systems, technique and mindset</strong>.</p>' + 
+    '<ul>' + 
+      '<li>Use the data to set <strong>SMART goals</strong> (e.g., “Keep all laps within 3 seconds,” or “Aim for 1:45–1:48 per lap next week”).</li>' + 
+      '<li>Link pacing to <strong>energy systems</strong>: aerobic base, lactate build-up, and why sprinting at the start is not helpful for long runs.</li>' + 
+      '<li>Have students reflect on their <strong>warm-up, sleep, hydration, nutrition</strong> and how that may have affected their splits.</li>' + 
+      '<li>Over time, let them compare their own charts to see improvements in consistency and total time.</li>' + 
+    '</ul>'; 
+  contentEl.appendChild(closing); 
+})(); 
+</script> 
+</body> 
+</html> 
