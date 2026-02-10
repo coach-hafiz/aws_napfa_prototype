@@ -19,13 +19,12 @@ body{
   color:#111;
 }
 
-/* App grid switches by orientation */
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: increase video height to maximise camera view */
+/* Portrait: make camera view BIGGER */
 @media (orientation:portrait){
   .app{
-    grid-template-rows: 45vh 1fr; /* larger video area */
+    grid-template-rows: 62vh 1fr;  /* was 45vh */
     grid-template-columns: 1fr;
     grid-template-areas:
       "top"
@@ -35,10 +34,10 @@ body{
   .bottom{ grid-area: bottom; }
 }
 
-/* Landscape: left half for video+controls; right half for table */
+/* Landscape: keep split view */
 @media (orientation:landscape){
   .app{
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.15fr 0.85fr; /* give video a bit more */
     grid-template-rows: 100vh;
     grid-template-areas:
       "left right";
@@ -47,14 +46,12 @@ body{
   .bottom{ grid-area: right; height:100vh; }
 }
 
-/* Video+controls container */
 .top{
   position:relative;
   background:#000;
   overflow:hidden;
 }
 
-/* TopCodes will draw into this canvas */
 #view{
   width:100%;
   height:100%;
@@ -63,7 +60,7 @@ body{
   touch-action:none;
 }
 
-/* Controls overlay: column with 2 rows (buttons row + laps/distance row) */
+/* Controls overlay */
 .controls{
   position:absolute;
   left:0; right:0; top:0;
@@ -81,7 +78,6 @@ body{
   border-bottom:1px solid rgba(0,0,0,0.06);
 }
 
-/* rows inside controls */
 .controls-row{
   display:flex;
   gap:8px;
@@ -118,7 +114,6 @@ select,input[type=number]{
 }
 .spacer{ flex:1 1 auto }
 
-/* Bottom pane: table + status */
 .bottom{
   display:grid;
   grid-template-rows: auto 1fr auto;
@@ -171,7 +166,7 @@ tr.done{ background:#e9f6ec }
   color:#444;
 }
 
-/* Small screens: keep buttons readable */
+/* Small screens */
 @media (max-width:420px){
   button{ padding:8px 10px }
   .timer{ min-width:66px }
@@ -185,10 +180,12 @@ tr.done{ background:#e9f6ec }
     <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
 
     <div class="controls">
-      <!-- Row 1: camera + timer + export/summary -->
       <div class="controls-row">
         <button id="enableBtn">Enable Camera</button>
         <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
+
+        <button id="swapBtn" class="secondary" disabled>Switch: Back</button>
+
         <button id="startBtn" class="secondary" disabled>Start</button>
         <button id="stopBtn"  class="secondary" disabled>Stop</button>
         <div class="timer" id="timer">00:00</div>
@@ -203,7 +200,6 @@ tr.done{ background:#e9f6ec }
         </span>
       </div>
 
-      <!-- Row 2: laps + distance + per-lap info on their own line -->
       <div class="controls-row">
         <label for="lapsSel" style="font-size:12px;color:#333">Laps</label>
         <select id="lapsSel" aria-label="Number of laps"></select>
@@ -246,31 +242,47 @@ tr.done{ background:#e9f6ec }
   var canvas   = document.getElementById('view');
   var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
-  var statusEl = document.getElementById('status');
-  var tbody    = document.getElementById('tbody');
-  var timerEl  = document.getElementById('timer');
-  var enableBtn= document.getElementById('enableBtn');
+  var statusEl  = document.getElementById('status');
+  var tbody     = document.getElementById('tbody');
+  var timerEl   = document.getElementById('timer');
+
+  var enableBtn = document.getElementById('enableBtn');
   var disableBtn= document.getElementById('disableBtn');
-  var startBtn = document.getElementById('startBtn');
-  var stopBtn  = document.getElementById('stopBtn');
-  var exportBtn= document.getElementById('exportBtn');
+  var swapBtn   = document.getElementById('swapBtn');
+
+  var startBtn  = document.getElementById('startBtn');
+  var stopBtn   = document.getElementById('stopBtn');
+  var exportBtn = document.getElementById('exportBtn');
   var summaryBtn= document.getElementById('summaryBtn');
-  var lapsSel  = document.getElementById('lapsSel');
+
+  var lapsSel   = document.getElementById('lapsSel');
   var distanceInput = document.getElementById('distanceInput');
   var lapInfoEl = document.getElementById('lapInfo');
 
   var cameraActive = false;
 
+  // Facing mode control
+  // "environment" = back, "user" = front
+  var facingMode = "environment";
+  function updateSwapLabel(){
+    swapBtn.textContent = "Switch: " + (facingMode === "environment" ? "Back" : "Front");
+  }
+  updateSwapLabel();
+
   var runDistanceMeters = parseFloat(distanceInput.value) || 1600;
 
   // Populate laps 1..20 (default 4)
-  var i;
-  for (i=1;i<=20;i++){
+  for (var i=1;i<=20;i++){
     var opt=document.createElement('option');
     opt.value=i;
     opt.textContent=i;
     if(i===4) opt.selected=true;
     lapsSel.appendChild(opt);
+  }
+
+  function setStatus(msg){
+    statusEl.textContent = msg;
+    console.log(msg);
   }
 
   function updateLapInfo(){
@@ -295,9 +307,7 @@ tr.done{ background:#e9f6ec }
     updateLapInfo();
   });
 
-  lapsSel.addEventListener('change', function(){
-    updateLapInfo();
-  });
+  lapsSel.addEventListener('change', updateLapInfo);
 
   // TopCode -> Runner ID mapping (A)
   var TOPCODE_MAP = {
@@ -306,24 +316,8 @@ tr.done{ background:#e9f6ec }
     107:11,109:12,115:13,117:14,121:15,
     143:16,151:17,155:18,157:19,167:20
   };
-
   function mapCode(raw){
     return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
-  }
-
-  // State
-  var counting   = false;
-  var startTime  = 0;
-  var timerTick  = null;
-  var lineY      = null;  // in canvas pixels (device pixels after DPR resize)
-  var COOLDOWN   = 1200;  // ms between laps for same runner
-
-  // runners[id] = { laps:[], lastTs, finished, totalLaps, lastSide }
-  var runners    = {};
-
-  function setStatus(msg){
-    statusEl.textContent = msg;
-    console.log(msg);
   }
 
   function msToMMSS(ms){
@@ -334,16 +328,26 @@ tr.done{ background:#e9f6ec }
   }
 
   function colorForRemaining(rem){
-    if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0'; // turquoise
-    if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50'; // green
-    if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0'; // purple
-    if (rem === 17)                                        return '#CDDC39'; // lime
-    if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3'; // blue
-    if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800'; // orange
-    if (rem === 1)                                         return '#F44336'; // red
-    if (rem <= 0)                                          return '#9E9E9E'; // grey
-    return '#EEEEEE'; // default
+    if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0';
+    if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50';
+    if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0';
+    if (rem === 17)                                        return '#CDDC39';
+    if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3';
+    if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800';
+    if (rem === 1)                                         return '#F44336';
+    if (rem <= 0)                                          return '#9E9E9E';
+    return '#EEEEEE';
   }
+
+  // State
+  var counting   = false;
+  var startTime  = 0;
+  var timerTick  = null;
+  var lineY      = null;
+  var COOLDOWN   = 1200;
+
+  // runners[id] = { laps:[], lastTs, finished, totalLaps, lastSide }
+  var runners    = {};
 
   function ensureRunner(id){
     var key = String(id);
@@ -379,23 +383,18 @@ tr.done{ background:#e9f6ec }
       lapsCell.textContent = remaining;
       var c = colorForRemaining(remaining);
       lapsCell.style.backgroundColor = c;
-      if (remaining <= 1) lapsCell.style.color = '#fff';
-      else lapsCell.style.color = '#000';
+      lapsCell.style.color = (remaining <= 1) ? '#fff' : '#000';
     }
 
     if (finCell){
       finCell.textContent = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : '-';
-      if (r.finished && remaining === 0){
-        finCell.style.fontWeight = '700';
-      }
+      if (r.finished && remaining === 0) finCell.style.fontWeight = '700';
     }
 
     if (splitsCell){
       if (lapsDone){
         var parts = [];
-        for (var i=0;i<r.laps.length;i++){
-          parts.push(msToMMSS(r.laps[i]));
-        }
+        for (var i=0;i<r.laps.length;i++) parts.push(msToMMSS(r.laps[i]));
         splitsCell.textContent = parts.join(' | ');
       } else {
         splitsCell.textContent = '-';
@@ -420,9 +419,7 @@ tr.done{ background:#e9f6ec }
     r.laps.push(now - startTime);
     r.lastTs = now;
 
-    if (r.laps.length >= r.totalLaps){
-      r.finished = true;
-    }
+    if (r.laps.length >= r.totalLaps) r.finished = true;
 
     updateRunnerRow(id);
 
@@ -446,43 +443,153 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  // Resize canvas to match displayed size (DPR aware for crispness)
+  /**
+   * IMPORTANT: TopCodes.startVideoScan() uses the canvas element's WIDTH/HEIGHT ATTRIBUTES
+   * to set camera constraints. So we must keep those attributes in sync with our layout.
+   */
   function resizeCanvas(){
     var rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
     var dpr = window.devicePixelRatio || 1;
+
+    // Use device pixels for detection clarity, but cap to avoid super heavy loads.
+    // (Still usually much sharper than CSS-only sizing.)
     var targetW = Math.max(1, Math.round(rect.width * dpr));
     var targetH = Math.max(1, Math.round(rect.height * dpr));
 
-    if (canvas.width !== targetW || canvas.height !== targetH){
-      canvas.width = targetW;
-      canvas.height = targetH;
+    // Optional cap (prevents requesting 4K on some devices)
+    var MAX_W = 1920;
+    if (targetW > MAX_W){
+      var scale = MAX_W / targetW;
+      targetW = Math.round(targetW * scale);
+      targetH = Math.round(targetH * scale);
     }
+
+    if (canvas.width !== targetW || canvas.height !== targetH){
+      canvas.width  = targetW;
+      canvas.height = targetH;
+
+      // Keep ATTRIBUTES aligned (TopCodes reads these)
+      canvas.setAttribute('width', String(targetW));
+      canvas.setAttribute('height', String(targetH));
+    }
+  }
+
+  // ===== Patch TopCodes camera constraints to support front/back switching =====
+  // (We override startVideoScan to include facingMode while keeping original behavior.)
+  function patchTopCodesForFacingMode(){
+    if (!window.TopCodes || !TopCodes.startVideoScan) return;
+
+    if (TopCodes.__patchedFacingMode) return;
+    TopCodes.__patchedFacingMode = true;
+
+    var originalStartVideoScan = TopCodes.startVideoScan;
+
+    TopCodes.startVideoScan = function(canvasId){
+      // initialize scanner if needed (same as library)
+      if (!(canvasId in TopCodes._mediaStreams)) {
+        // topcodes_initVideoScanner is global inside library
+        if (typeof topcodes_initVideoScanner === 'function') topcodes_initVideoScanner(canvasId);
+      }
+
+      var canvasEl = document.querySelector("#" + canvasId);
+      var videoEl  = document.querySelector("#" + canvasId + "-video");
+      if (!canvasEl || !videoEl || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        try { originalStartVideoScan(canvasId); } catch(e){}
+        return;
+      }
+
+      var vw = parseInt(canvasEl.getAttribute('width'), 10);
+      var vh = parseInt(canvasEl.getAttribute('height'), 10);
+
+      // If width/height are missing, fall back to original (but we try to keep them set)
+      if (!isFinite(vw) || !isFinite(vh) || vw <= 0 || vh <= 0){
+        try { originalStartVideoScan(canvasId); } catch(e){}
+        return;
+      }
+
+      // Stop any existing stream for this canvasId first (prevents "NotReadableError" on some devices)
+      if (TopCodes._mediaStreams[canvasId]) {
+        try {
+          TopCodes.stopVideoScan(canvasId);
+        } catch(e){}
+      }
+
+      // Build constraints: prefer facingMode, but keep requested resolution.
+      var constraints = {
+        audio: false,
+        video: {
+          width:  { ideal: vw },
+          height: { ideal: vh },
+          facingMode: { ideal: facingMode }   // <-- key addition
+        }
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(mediaStream){
+          videoEl.srcObject = mediaStream;
+          TopCodes._mediaStreams[canvasId] = mediaStream;
+
+          // iOS/Safari friendliness
+          videoEl.playsInline = true;
+          videoEl.muted = true;
+
+          var p = videoEl.play();
+          if (p && typeof p.catch === 'function') p.catch(function(){});
+        })
+        .catch(function(err){
+          console.log("getUserMedia failed with facingMode, retrying without facingMode:", err);
+
+          // Fallback: remove facingMode (some devices/browsers ignore or error)
+          var fallback = {
+            audio: false,
+            video: {
+              width:  { ideal: vw },
+              height: { ideal: vh }
+            }
+          };
+
+          navigator.mediaDevices.getUserMedia(fallback)
+            .then(function(mediaStream){
+              videoEl.srcObject = mediaStream;
+              TopCodes._mediaStreams[canvasId] = mediaStream;
+              videoEl.playsInline = true;
+              videoEl.muted = true;
+
+              var p2 = videoEl.play();
+              if (p2 && typeof p2.catch === 'function') p2.catch(function(){});
+            })
+            .catch(function(err2){
+              console.error("Camera error:", err2);
+              setStatus('Camera error: ' + (err2.message || err2) + '. Check permissions and HTTPS/localhost.');
+              enableBtn.disabled = false;
+              disableBtn.disabled = true;
+              swapBtn.disabled = true;
+              startBtn.disabled = true;
+              cameraActive = false;
+            });
+        });
+    };
   }
 
   // ===== TopCodes frame callback =====
   function handleFrame(jsonString){
     var data;
-    try{
-      data = JSON.parse(jsonString);
-    }catch(e){
-      return;
-    }
+    try{ data = JSON.parse(jsonString); }catch(e){ return; }
+
     var tcodes = data.topcodes || [];
     var w = canvas.width  || 640;
     var h = canvas.height || 480;
 
-    // Compute line every frame (in case canvas size changes)
     lineY = Math.round(h * 0.5);
 
-    // Deadband around line to avoid jitter; scales with canvas height
+    // Deadband around line to avoid jitter (in PIXELS of the canvas)
     var deadband = Math.max(16, Math.round(h * 0.10));
 
-    // Draw red line on top of video frame
+    // Draw red line overlay
     ctx.save();
-    var lineColor = getComputedStyle(document.documentElement)
-      .getPropertyValue('--line') || 'red';
+    var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
     ctx.strokeStyle = (lineColor || 'red').trim();
     ctx.lineWidth   = Math.max(3, h/220);
     ctx.beginPath();
@@ -495,17 +602,15 @@ tr.done{ background:#e9f6ec }
 
     for (var i=0;i<tcodes.length;i++){
       var tc = tcodes[i];
-      var rawCode = tc.code;
-      var runnerID = mapCode(rawCode);
+      var runnerID = mapCode(tc.code);
       if (!runnerID) continue;
 
       ensureRunner(runnerID);
       var key = String(runnerID);
       var r = runners[key];
-      if (!r) continue;
-      if (r.finished) continue;
+      if (!r || r.finished) continue;
 
-      // centre of the code in canvas pixels
+      // Tag centre in canvas pixel coords
       var cy = tc.y;
 
       // side: -1 above, +1 below, 0 within deadband
@@ -520,76 +625,85 @@ tr.done{ background:#e9f6ec }
       }
 
       // Update lastSide only when clearly outside deadband
-      if (side !== 0){
-        r.lastSide = side;
-      }
+      if (side !== 0) r.lastSide = side;
     }
   }
 
   function stopCamera(){
     if (!cameraActive) return;
-
-    try{
-      // TopCodes uses a toggle-style start/stop function
-      TopCodes.startStopVideoScan('view');
-    }catch(e){}
-
+    try { TopCodes.stopVideoScan('view'); } catch(e){}
     cameraActive = false;
 
     enableBtn.disabled  = false;
     disableBtn.disabled = true;
+    swapBtn.disabled    = true;
     startBtn.disabled   = true;
     stopBtn.disabled    = true;
 
     setStatus('Camera stopped. You can re-enable it again.');
   }
 
-  // ===== Buttons =====
-  enableBtn.addEventListener('click', function(){
-    if (cameraActive) {
-      setStatus('Camera already active.');
+  function startCamera(){
+    if (cameraActive) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
       return;
     }
 
-    // Resize canvas before starting camera
     resizeCanvas();
+    patchTopCodesForFacingMode();
 
     try{
-      // Let TopCodes own camera + video element (avoids double-camera conflicts)
-      TopCodes.startStopVideoScan('view');
+      // Use explicit start (not toggle) for predictability
+      TopCodes.startVideoScan('view');
+      TopCodes.setVideoFrameCallback('view', handleFrame);
 
-      // Set callback after starting scan
-      setTimeout(function(){
-        try{
-          TopCodes.setVideoFrameCallback('view', handleFrame);
-          cameraActive = true;
+      cameraActive = true;
 
-          enableBtn.disabled  = true;
-          disableBtn.disabled = false;
-          startBtn.disabled   = false;
-          stopBtn.disabled    = true;
-          exportBtn.disabled  = true;
-          summaryBtn.disabled = true;
+      enableBtn.disabled  = true;
+      disableBtn.disabled = false;
+      swapBtn.disabled    = false;
+      startBtn.disabled   = false;
+      stopBtn.disabled    = true;
+      exportBtn.disabled  = true;
+      summaryBtn.disabled = true;
 
-          setStatus('Camera active. Aim TopCodes so they cross the red line. Tap "Start" to begin.');
-        }catch(e){
-          console.error(e);
-          setStatus('Setup error: ' + (e.message || e));
-          enableBtn.disabled = false;
-          cameraActive = false;
-        }
-      }, 200);
-
+      setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') + '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
     }catch(e){
       console.error(e);
-      setStatus('Camera error: ' + (e.message || e) + '. Make sure permissions are granted and you are on HTTPS or localhost.');
+      setStatus('Camera error: ' + (e.message || e) + '. Make sure permissions are granted.');
       enableBtn.disabled = false;
+      disableBtn.disabled = true;
+      swapBtn.disabled = true;
+      startBtn.disabled = true;
       cameraActive = false;
     }
+  }
+
+  function restartCamera(){
+    if (!cameraActive) return;
+    // Stop then start (needed to switch cameras)
+    try { TopCodes.stopVideoScan('view'); } catch(e){}
+    cameraActive = false;
+    startCamera();
+  }
+
+  // ===== Buttons =====
+  enableBtn.addEventListener('click', function(){
+    if (cameraActive) { setStatus('Camera already active.'); return; }
+    startCamera();
   });
 
-  disableBtn.addEventListener('click', function(){
-    stopCamera();
+  disableBtn.addEventListener('click', stopCamera);
+
+  swapBtn.addEventListener('click', function(){
+    facingMode = (facingMode === 'environment') ? 'user' : 'environment';
+    updateSwapLabel();
+    if (cameraActive){
+      setStatus('Switching camera…');
+      restartCamera();
+    }
   });
 
   startBtn.addEventListener('click', function(){
@@ -629,9 +743,7 @@ tr.done{ background:#e9f6ec }
         var r = runners[id];
         if (!r.finished){
           var finCell = document.getElementById('fin-'+id);
-          if (finCell){
-            finCell.textContent = 'DNF';
-          }
+          if (finCell) finCell.textContent = 'DNF';
         }
       }
     }
@@ -646,35 +758,30 @@ tr.done{ background:#e9f6ec }
 
   exportBtn.addEventListener('click', function(){
     var ids = Object.keys(runners).sort(function(a,b){ return Number(a)-Number(b); });
-    if (!ids.length){
-      setStatus('No data to export.');
-      return;
-    }
+    if (!ids.length){ setStatus('No data to export.'); return; }
 
     var maxLaps = 0;
-    var idIdx;
-    for (idIdx=0; idIdx<ids.length; idIdx++){
-      var r = runners[ids[idIdx]];
+    for (var idx=0; idx<ids.length; idx++){
+      var r = runners[ids[idx]];
       if (r.laps.length > maxLaps) maxLaps = r.laps.length;
     }
 
     var rows = [];
     var header = ['Runner ID','Total Laps','Run Distance (m)','Total Distance (m)','Finish','Pace (min/km)'];
-    var j;
-    for (j=1;j<=maxLaps;j++) header.push('Lap '+j+' (mm:ss)');
+    for (var j=1;j<=maxLaps;j++) header.push('Lap '+j+' (mm:ss)');
     rows.push(header);
 
     var totalRunMeters = runDistanceMeters;
 
-    for (idIdx=0; idIdx<ids.length; idIdx++){
-      var id = ids[idIdx];
+    for (idx=0; idx<ids.length; idx++){
+      var id = ids[idx];
       var rr = runners[id];
       var total  = rr.totalLaps;
       var lapsDone = rr.laps.length;
       var finishMs = lapsDone ? rr.laps[lapsDone-1] : NaN;
       var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
 
-      var totalDist = totalRunMeters; // planned distance
+      var totalDist = totalRunMeters;
       var paceStrVal = '';
       if (lapsDone){
         var totalSec = finishMs/1000;
@@ -684,7 +791,7 @@ tr.done{ background:#e9f6ec }
         paceStrVal = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
       }
 
-      var row    = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
+      var row = [id, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
       for (j=0;j<maxLaps;j++){
         row.push(rr.laps[j] != null ? msToMMSS(rr.laps[j]) : '');
       }
@@ -692,23 +799,20 @@ tr.done{ background:#e9f6ec }
     }
 
     var csv = '';
-    for (i=0;i<rows.length;i++){
-      var cols = rows[i];
+    for (var rIdx=0; rIdx<rows.length; rIdx++){
+      var cols = rows[rIdx];
       var parts = [];
-      for (j=0;j<cols.length;j++){
-        var s = String(cols[j]);
-        if (s.indexOf(',') !== -1){
-          s = '"' + s.replace(/"/g,'""') + '"';
-        }
+      for (var cIdx=0; cIdx<cols.length; cIdx++){
+        var s = String(cols[cIdx]);
+        if (s.indexOf(',') !== -1) s = '"' + s.replace(/"/g,'""') + '"';
         parts.push(s);
       }
       csv += parts.join(',') + '\n';
     }
 
     var encoded = encodeURIComponent(csv);
-    var href    = 'data:text/csv;charset=utf-8,' + encoded;
-    var a       = document.createElement('a');
-    a.href      = href;
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encoded;
     a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
@@ -743,10 +847,7 @@ tr.done{ background:#e9f6ec }
 
   summaryBtn.addEventListener('click', function(){
     var data = buildSummaryData();
-    if (!data){
-      setStatus('No data available for summary.');
-      return;
-    }
+    if (!data){ setStatus('No data available for summary.'); return; }
     try{
       localStorage.setItem('topcodesLapSummaryV1', JSON.stringify(data));
       window.open('detailedsummary.html', '_blank');
@@ -756,10 +857,18 @@ tr.done{ background:#e9f6ec }
     }
   });
 
-  // Handle window resizing
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', function(){
+    var wasActive = cameraActive;
+    resizeCanvas();
 
-  // Stop camera when leaving the page
+    // If camera is active, restart to request new resolution matching new canvas size
+    // (keeps view sharp and prevents “small video in big canvas”)
+    if (wasActive){
+      setStatus('Resizing… restarting camera for best quality.');
+      restartCamera();
+    }
+  });
+
   window.addEventListener('beforeunload', function(){
     stopCamera();
   });
@@ -767,7 +876,7 @@ tr.done{ background:#e9f6ec }
   // Initial setup
   resizeCanvas();
   updateLapInfo();
-  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR / barcodes). Note: Camera requires HTTPS or localhost.');
+  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR/barcodes). Note: Camera requires HTTPS or localhost.');
 })();
 </script>
 </body>
