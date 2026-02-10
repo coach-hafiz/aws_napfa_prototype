@@ -1,520 +1,891 @@
-<!doctype html> 
-<html lang="en"> 
-<head> 
-<meta charset="utf-8" /> 
-<meta name="viewport" 
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" /> 
-<title>Lap Analysis — Detailed Summary</title> 
-<style> 
-:root{ 
-  --accent:#015871; 
-  --bg:#f7f7f7; 
-} 
-*{ box-sizing:border-box } 
-body{ 
-  margin:0; 
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; 
-  background:#f7f7f7; 
-  color:#111; 
-} 
-header{ 
-  background:#fff; 
-  border-bottom:1px solid #ddd; 
-  padding:12px 16px; 
-  position:sticky; 
-  top:0; 
-  z-index:10; 
-} 
-header h1{ 
-  margin:0; 
-  font-size:20px; 
-} 
-header .meta{ 
-  font-size:13px; 
-  color:#555; 
-  margin-top:4px; 
-} 
-main{ 
-  max-width:1000px; 
-  margin:0 auto; 
-  padding:12px 16px 24px; 
-} 
-.section{ 
-  background:#fff; 
-  border-radius:10px; 
-  border:1px solid #e6e6e6; 
-  padding:12px 14px 14px; 
-  margin-bottom:16px; 
-} 
-.section h2{ 
-  margin:0 0 6px; 
-  font-size:18px; 
-  color:#033649; 
-} 
-.section h3{ 
-  margin:10px 0 4px; 
-  font-size:15px; 
-} 
-.badge{ 
-  display:inline-block; 
-  font-size:12px; 
-  border-radius:999px; 
-  padding:3px 9px; 
-  margin-right:6px; 
-  margin-bottom:4px; 
-  background:#eee; 
-} 
-.runner-list{ 
-  font-size:13px; 
-  margin:4px 0 6px; 
-} 
-.runner-list span{ 
-  display:inline-block; 
-  margin-right:6px; 
-} 
-.small{ 
-  font-size:12px; 
-  color:#555; 
-} 
-p{ 
-  font-size:14px; 
-  margin:4px 0; 
-} 
-.button-row{ 
-  margin-top:8px; 
-} 
-button{ 
-  background:var(--accent); 
-  color:#fff; 
-  border:0; 
-  border-radius:999px; 
-  font-weight:600; 
-  padding:8px 14px; 
-  font-size:14px; 
-  cursor:pointer; 
-} 
-button.secondary{ 
-  background:#666; 
-} 
-.code{ 
-  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
-  background:#f1f1f1; 
-  padding:2px 4px; 
-  border-radius:4px; 
-  font-size:12px; 
-} 
-.empty{ 
-  font-size:14px; 
-  color:#666; 
-} 
-ul{ 
-  margin:4px 0 4px 18px; 
-  padding:0; 
-  font-size:14px; 
-} 
-</style> 
-</head> 
-<body> 
-<header> 
-  <h1>Detailed Lap Summary</h1> 
-  <div class="meta" id="metaText">Loading run data…</div> 
-  <div class="button-row"> 
-    <button onclick="window.location.href='index.html'">Back to Lap Counter</button> 
-  </div> 
-</header> 
- 
-<main id="content"> 
-  <!-- Sections injected by JS --> 
-</main> 
- 
-<script> 
-(function(){ 
-  var contentEl = document.getElementById('content'); 
-  var metaText  = document.getElementById('metaText'); 
- 
-  function msToMMSS(ms){ 
-    var s = Math.floor(ms/1000); 
-    var m = Math.floor(s/60); 
-    var ss= s % 60; 
-    return (m<10?'0':'')+m + ':' + (ss<10?'0':'')+ss; 
-  } 
- 
-  function paceStr(totalSec, distM){ 
-    if (!isFinite(totalSec) || !distM || distM <= 0) return '-'; 
-    var paceSecPerKm = totalSec / (distM/1000); 
-    var m = Math.floor(paceSecPerKm/60); 
-    var s = Math.round(paceSecPerKm%60); 
-    return m + ':' + (s<10?'0':'')+s + ' min/km'; 
-  } 
- 
-  function createSection(title){ 
-    var div = document.createElement('div'); 
-    div.className = 'section'; 
-    var h2 = document.createElement('h2'); 
-    h2.textContent = title; 
-    div.appendChild(h2); 
-    return div; 
-  } 
- 
-  // Load data from localStorage 
-  var raw = null; 
-  try{ 
-    raw = localStorage.getItem('topcodesLapSummaryV1'); 
-  }catch(e){} 
- 
-  if (!raw){ 
-    metaText.textContent = 'No saved run data found. Please run a session and click "Detailed Summary" from the main page.'; 
-    var sec = createSection('No Data'); 
-    sec.innerHTML += '<p class="empty">There is no stored summary for analysis. Return to the lap counter, run a test, then tap <span class="code">Detailed Summary</span>.</p>'; 
-    contentEl.appendChild(sec); 
-    return; 
-  } 
- 
-  var data = null; 
-  try{ 
-    data = JSON.parse(raw); 
-  }catch(e){ 
-    metaText.textContent = 'Saved data is corrupted or unreadable.'; 
-    var sec2 = createSection('Error'); 
-    sec2.innerHTML += '<p class="empty">The stored data could not be parsed. Please re-run a session and generate a new summary.</p>'; 
-    contentEl.appendChild(sec2); 
-    return; 
-  } 
- 
-  var runDist = data.runDistanceMeters || 1600; 
-  var lapsConfig = data.lapsConfig || null; 
-  var runnersRaw = data.runners || []; 
- 
-  metaText.textContent = 
-    'Run distance ' + runDist + ' m · ' + 
-    (lapsConfig ? (lapsConfig + ' laps planned') : 'laps: variable') + 
-    ' · ' + runnersRaw.length + ' runner(s) recorded'; 
- 
-  // Process runners: compute lap times, total time, pattern category (Group B) 
-  var EVEN_RANGE_SEC = 4;     // if lap range <= 4s -> even 
-  var POS_NEG_DIFF   = 3;     // min diff to call positive/negative 
-  var DRIFT_MIN_DIFF = 5;     // min total drift for "pacing drift" 
-  var STEP_TOL       = 1.5;   // tolerance for monotonic checks 
- 
-  function classifyPattern(r){ 
-    var splits = r.splitsMs || []; 
-    if (!r.finished || !splits.length || splits.length < 2){ 
-      return 'incomplete'; 
-    } 
-    var lapTimesSec = []; 
-    for (var i=0;i<splits.length;i++){ 
-      var prev = (i===0 ? 0 : splits[i-1]); 
-      lapTimesSec.push((splits[i]-prev)/1000); 
-    } 
-    if (lapTimesSec.length < 2) return 'incomplete'; 
- 
-    var first = lapTimesSec[0]; 
-    var last  = lapTimesSec[lapTimesSec.length-1]; 
- 
-    var minLap = lapTimesSec[0]; 
-    var maxLap = lapTimesSec[0]; 
-    var sumLap = 0; 
-    for (var j=0;j<lapTimesSec.length;j++){ 
-      var v = lapTimesSec[j]; 
-      if (v < minLap) minLap = v; 
-      if (v > maxLap) maxLap = v; 
-      sumLap += v; 
-    } 
-    var range = maxLap - minLap; 
-    var mean  = sumLap / lapTimesSec.length; 
- 
-    var isMonotonicSlower = true; 
-    var isMonotonicFaster = true; 
-    for (j=1;j<lapTimesSec.length;j++){ 
-      if (lapTimesSec[j] + STEP_TOL < lapTimesSec[j-1]){ 
-        isMonotonicSlower = false; 
-      } 
-      if (lapTimesSec[j] > lapTimesSec[j-1] + STEP_TOL){ 
-        isMonotonicFaster = false; 
-      } 
-    } 
-    var drift = last - first; // +ve = slower over time 
- 
-    // Group B rules 
-    if (range <= EVEN_RANGE_SEC){ 
-      return 'even'; // Even pacing 
-    } 
- 
-    if (first + POS_NEG_DIFF < last){ 
-      return 'positive'; // positive split: fast start, slow end 
-    } 
- 
-    if (last + POS_NEG_DIFF < first){ 
-      return 'negative'; // negative split: slow start, faster finish 
-    } 
- 
-    if (isMonotonicSlower && drift >= DRIFT_MIN_DIFF){ 
-      return 'drift'; // consistent slowing 
-    } 
- 
-    return 'erratic'; // inconsistent 
-  } 
- 
-  var groups = { 
-    even: [], 
-    positive: [], 
-    negative: [], 
-    drift: [], 
-    erratic: [], 
-    incomplete: [] 
-  }; 
- 
-  var runnerSummaries = runnersRaw.map(function(r){ 
-    var splits = r.splitsMs || []; 
-    var totalMs = splits.length ? splits[splits.length-1] : NaN; 
-    var lapTimesSec = []; 
-    for (var i=0;i<splits.length;i++){ 
-      var prev = (i===0 ? 0 : splits[i-1]); 
-      lapTimesSec.push((splits[i]-prev)/1000); 
-    } 
-    var cat = classifyPattern(r); 
- 
-    var totalSec = isFinite(totalMs) ? totalMs/1000 : NaN; 
-    var pace = paceStr(totalSec, runDist); 
- 
-    var obj = { 
-      id: r.id, 
-      totalLapsPlanned: r.totalLaps, 
-      finished: !!r.finished, 
-      splitsMs: splits, 
-      lapTimesSec: lapTimesSec, 
-      totalMs: totalMs, 
-      totalSec: totalSec, 
-      pace: pace, 
-      category: cat 
-    }; 
-    groups[cat].push(obj); 
-    return obj; 
-  }); 
- 
-  function runnersLabel(list){ 
-    if (!list.length) return 'None'; 
-    return list.map(function(r){ return '#'+r.id; }).join(', '); 
-  } 
- 
-  // ========== Section: Overview ========== 
-  var overview = createSection('Overview'); 
-  overview.innerHTML += 
-    '<p>This summary groups runners by <strong>pacing pattern</strong> and explains what it means for their fitness, energy systems, and running habits, in student-friendly language.</p>' + 
-    '<p>Each group below lists the <span class="code">Runner IDs</span> (e.g. #3, #7) that behaved in a similar way during the run.</p>'; 
-  contentEl.appendChild(overview); 
- 
-  // Helper to add group block 
-  function addGroupBlock(title, key, descriptionHtml, coachingHtml){ 
-    var list = groups[key]; 
-    if (!list || !list.length) return; 
- 
-    var sec = createSection(title); 
-    var rl = document.createElement('div'); 
-    rl.className = 'runner-list'; 
-    rl.innerHTML = '<strong>Runners:</strong> ' + runnersLabel(list); 
-    sec.appendChild(rl); 
- 
-    var desc = document.createElement('div'); 
-    desc.innerHTML = descriptionHtml; 
-    sec.appendChild(desc); 
- 
-    if (coachingHtml){ 
-      var coach = document.createElement('div'); 
-      coach.innerHTML = coachingHtml; 
-      sec.appendChild(coach); 
-    } 
- 
-    // Small note about what to tell students 
-    var note = document.createElement('p'); 
-    note.className = 'small'; 
-    note.textContent = 'Tip: Use these points to explain to students how their pacing affects energy systems, fatigue, and performance in simple terms they can understand.'; 
-    sec.appendChild(note); 
- 
-    contentEl.appendChild(sec); 
-  } 
- 
-  // ========== Even Pacers ========== 
-  addGroupBlock( 
-    'Even Pacers (Very Consistent Splits)', 
-    'even', 
-    '<h3>What their pacing shows</h3>' + 
-    '<ul>' + 
-      '<li><strong>Even pacing</strong>: each lap is within about ±2–3 seconds of the others.</li>' + 
-      '<li>This is the most <strong>efficient pacing strategy</strong> for distance runs like 1.6 km or 2.4 km.</li>' + 
-      '<li>They are likely using their <strong>aerobic system</strong> well, without going too fast at the start.</li>' + 
-      '<li>Shows good <strong>discipline</strong> and the ability to ignore adrenaline and peer pressure at the start.</li>' + 
-    '</ul>' + 
-    '<h3>What it suggests about fitness & technique</h3>' + 
-    '<ul>' + 
-      '<li><strong>Energy systems:</strong> Their aerobic base is decent; they are not “blowing up” halfway through.</li>' + 
-      '<li><strong>Technique:</strong> Stable cadence, stride length and breathing rhythm are likely, because pace is steady.</li>' + 
-      '<li><strong>Mental skills:</strong> Good focus and pacing awareness, not easily carried away by others sprinting off.</li>' + 
-    '</ul>', 
-    '<h3>How to coach this group</h3>' + 
-    '<ul>' + 
-      '<li>Affirm that even pacing is excellent for distance events.</li>' + 
-      '<li>Set <strong>SMART goals</strong> like: “Keep every lap within 3 seconds of 1:40 next session.”</li>' + 
-      '<li>Suggested workouts:' + 
-        '<ul>' + 
-          '<li><strong>Tempo runs</strong> at a steady pace (comfortably hard, but sustainable).</li>' + 
-          '<li><strong>Race-pace intervals</strong> (e.g., 3 × 600 m at target pace with short rest).</li>' + 
-        '</ul>' + 
-      '</li>' + 
-      '<li>Encourage them to notice how good posture, relaxed arms and rhythmic breathing help them maintain even splits.</li>' + 
-    '</ul>' 
-  ); 
- 
-  // ========== Positive Split ========== 
-  addGroupBlock( 
-    'Positive Split Runners (Fast Start → Slower Finish)', 
-    'positive', 
-    '<h3>What their pacing shows</h3>' + 
-    '<ul>' + 
-      '<li>The first lap(s) are <strong>much faster</strong> than the later laps.</li>' + 
-      '<li>This suggests they started above their sustainable pace and <strong>slowed down a lot</strong> later.</li>' + 
-      '<li>They likely hit their <strong>anaerobic glycolytic system</strong> too early, causing heavy legs and burning feeling.</li>' + 
-      '<li>This is common when students sprint at the start due to excitement, competition or poor pacing awareness.</li>' + 
-    '</ul>' + 
-    '<h3>What it suggests about fitness & mindset</h3>' + 
-    '<ul>' + 
-      '<li><strong>Energy systems:</strong> Early fast lap = high lactate; big drop in Lap 2 or 3 shows poor pacing control.</li>' + 
-      '<li><strong>Fatigue:</strong> Their body can produce speed, but struggles to <strong>hold that pace</strong> for the whole distance.</li>' + 
-      '<li><strong>Mental skills:</strong> They may chase others too aggressively, or fear “falling behind” at the start.</li>' + 
-    '</ul>', 
-    '<h3>How to coach this group</h3>' + 
-    '<ul>' + 
-      '<li>Teach them: “For distance runs, <strong>starting 5–10% slower</strong> than goal pace is often better.”</li>' + 
-      '<li>Suggested workouts:' + 
-        '<ul>' + 
-          '<li><strong>Pacing practice runs</strong>: run the same loop multiple times aiming for identical lap splits.</li>' + 
-          '<li><strong>Progression runs</strong>: start easier and finish slightly faster to train control and patience.</li>' + 
-          '<li><strong>Tempo runs</strong>: steady pace just below “too hard” to improve threshold and reduce early burnout.</li>' + 
-        '</ul>' + 
-      '</li>' + 
-      '<li>Explain that sprinting the first 30–50 m of a long run mainly uses the <strong>phosphagen system</strong>, which only lasts 5–10 seconds and doesn’t help for 1.6 km performance.</li>' + 
-    '</ul>' 
-  ); 
- 
-  // ========== Negative Split ========== 
-  addGroupBlock( 
-    'Negative Split Runners (Slow Start → Faster Finish)', 
-    'negative', 
-    '<h3>What their pacing shows</h3>' + 
-    '<ul>' + 
-      '<li>They start a bit slower and <strong>speed up</strong> in the later laps.</li>' + 
-      '<li>This usually means <strong>good aerobic capacity</strong> and the confidence to hold back early.</li>' + 
-      '<li>They may also be unsure at the start and only realise they can push harder halfway through.</li>' + 
-    '</ul>' + 
-    '<h3>What it suggests about fitness & mindset</h3>' + 
-    '<ul>' + 
-      '<li><strong>Energy systems:</strong> Aerobic system is working well; they can still tap into anaerobic power near the end for a strong finish.</li>' + 
-      '<li><strong>Fatigue tolerance:</strong> Finishing strong shows they can handle discomfort and push in the last lap.</li>' + 
-      '<li><strong>Mental skills:</strong> Negative splits show <strong>confidence</strong> and good judgement, especially if the final lap is the fastest.</li>' + 
-    '</ul>', 
-    '<h3>How to coach this group</h3>' + 
-    '<ul>' + 
-      '<li>Affirm that this is often a <strong>smart race strategy</strong>, especially in competitive runs.</li>' + 
-      '<li>Help them fine-tune: maybe start just a bit closer to their goal pace so they don’t leave too much “unused” energy.</li>' + 
-      '<li>Suggested workouts:' + 
-        '<ul>' + 
-          '<li><strong>Race-pace intervals</strong> (e.g., 4 × 400 m at goal pace with short rests).</li>' + 
-          '<li><strong>Speed endurance reps</strong> (200–300 m) to sharpen their finishing kick.</li>' + 
-        '</ul>' + 
-      '</li>' + 
-      '<li>Use their data to set <strong>SMART goals</strong>, like: “Next time, try to keep laps within 3 seconds, but keep a strong finish.”</li>' + 
-    '</ul>' 
-  ); 
- 
-  // ========== Pacing Drift ========== 
-  addGroupBlock( 
-    'Pacing Drift (Each Lap Getting Slower)', 
-    'drift', 
-    '<h3>What their pacing shows</h3>' + 
-    '<ul>' + 
-      '<li>Laps get <strong>progressively slower</strong>, even if the first lap is not extremely fast.</li>' + 
-      '<li>This can indicate <strong>fatigue building up</strong> due to a weaker aerobic base or going slightly too fast early on.</li>' + 
-      '<li>It may also signal that their <strong>running technique breaks down</strong> as they get tired.</li>' + 
-    '</ul>' + 
-    '<h3>What it suggests about fitness & technique</h3>' + 
-    '<ul>' + 
-      '<li><strong>Energy systems:</strong> Aerobic capacity may not yet be strong enough to maintain pace across all laps.</li>' + 
-      '<li><strong>Technique:</strong> As they fatigue, posture, cadence and breathing rhythm may deteriorate, making running less efficient.</li>' + 
-      '<li><strong>Recovery habits:</strong> Poor sleep, hydration or warm-up might also contribute to slower late laps.</li>' + 
-    '</ul>', 
-    '<h3>How to coach this group</h3>' + 
-    '<ul>' + 
-      '<li>Explain the idea of <strong>aerobic endurance</strong>: being able to hold a steady pace for the whole distance.</li>' + 
-      '<li>Suggested workouts:' + 
-        '<ul>' + 
-          '<li><strong>Aerobic endurance runs</strong>: slightly longer, easy runs to build base fitness.</li>' + 
-          '<li><strong>Longer intervals</strong> (e.g., 2 × 1.2 km) at a controlled pace to practise holding form and rhythm.</li>' + 
-          '<li><strong>Fartlek sessions</strong>: varying speeds but focusing on keeping the “steady” sections smooth and relaxed.</li>' + 
-        '</ul>' + 
-      '</li>' + 
-      '<li>Use their splits to highlight when their form likely breaks down (e.g., “Lap 3 got 10 seconds slower – that might be where your posture and breathing changed.”).</li>' + 
-    '</ul>' 
-  ); 
- 
-  // ========== Erratic / Inconsistent ========== 
-  addGroupBlock( 
-    'Erratic / Inconsistent Pacers', 
-    'erratic', 
-    '<h3>What their pacing shows</h3>' + 
-    '<ul>' + 
-      '<li>Their lap times jump up and down with no clear pattern.</li>' + 
-      '<li>This might be due to <strong>surges</strong> (speeding up, then suddenly slowing down), distractions, or giving up halfway then speeding up again.</li>' + 
-      '<li>It could also be linked to <strong>mental focus</strong> – finding it hard to stay “locked in” to a steady rhythm.</li>' + 
-    '</ul>' + 
-    '<h3>What it suggests about mindset & preparation</h3>' + 
-    '<ul>' + 
-      '<li><strong>Discipline:</strong> Inconsistent splits often mean they haven’t fully learned how to pace themselves yet.</li>' + 
-      '<li><strong>Focus:</strong> Losing concentration, chatting to friends, or reacting too much to others can disrupt pacing.</li>' + 
-      '<li><strong>Warm-up quality:</strong> If Lap 1 is slow but Lap 2 or 3 are suddenly fast, they may not have warmed up properly.</li>' + 
-    '</ul>', 
-    '<h3>How to coach this group</h3>' + 
-    '<ul>' + 
-      '<li>Give them a <strong>simple target</strong>: “Try to keep each lap within 3–4 seconds of 1:50.”</li>' + 
-      '<li>Suggested workouts:' + 
-        '<ul>' + 
-          '<li><strong>Pacing games / fartlek</strong> where they must hit a specific time repeatedly.</li>' + 
-          '<li><strong>400 m repeats</strong> at a steady pace, focusing on rhythm and relaxed breathing.</li>' + 
-        '</ul>' + 
-      '</li>' + 
-      '<li>Teach mental skills like having a <strong>focus cue</strong> (“tall posture, quick feet, calm breathing”) each time they pass the teacher.</li>' + 
-      '<li>Remind them that a proper warm-up (jog + dynamic drills + 2 × 50 m strides) helps the first lap feel smoother.</li>' + 
-    '</ul>' 
-  ); 
- 
-  // ========== Incomplete ========== 
-  if (groups.incomplete && groups.incomplete.length){ 
-    var incompleteSec = createSection('Incomplete Runs / Limited Data'); 
-    var rl2 = document.createElement('div'); 
-    rl2.className = 'runner-list'; 
-    rl2.innerHTML = '<strong>Runners:</strong> ' + runnersLabel(groups.incomplete); 
-    incompleteSec.appendChild(rl2); 
-    incompleteSec.innerHTML += 
-      '<p>These runners did not complete all laps or do not have enough split data to clearly identify a pacing pattern.</p>' + 
-      '<ul>' + 
-        '<li>They may have stopped early, walked large portions, or left the track.</li>' + 
-        '<li>Use this as a chance to discuss <strong>effort, perseverance</strong> and realistic goal-setting.</li>' + 
-        '<li>Encourage them to finish the full distance next time, even if the pace is slower.</li>' + 
-      '</ul>'; 
-    contentEl.appendChild(incompleteSec); 
-  } 
- 
-  // ========== Closing section ========== 
-  var closing = createSection('Using This Data With Students'); 
-  closing.innerHTML += 
-    '<p>Split times are not just numbers — they tell a story about each student\'s <strong>pacing strategy, energy systems, technique and mindset</strong>.</p>' + 
-    '<ul>' + 
-      '<li>Use the data to set <strong>SMART goals</strong> (e.g., “Keep all laps within 3 seconds,” or “Aim for 1:45–1:48 per lap next week”).</li>' + 
-      '<li>Link pacing to <strong>energy systems</strong>: aerobic base, lactate build-up, and why sprinting at the start is not helpful for long runs.</li>' + 
-      '<li>Have students reflect on their <strong>warm-up, sleep, hydration, nutrition</strong> and how that may have affected their splits.</li>' + 
-      '<li>Over time, let them compare their own charts to see improvements in consistency and total time.</li>' + 
-    '</ul>'; 
-  contentEl.appendChild(closing); 
-})(); 
-</script> 
-</body> 
-</html> 
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Run Feedback — Your Summary</title>
+<style>
+:root{
+  --accent:#015871;
+  --bg:#f6f7f9;
+  --card:#ffffff;
+  --muted:#64748b;
+  --line:#e5e7eb;
+  --good:#16a34a;
+  --warn:#f59e0b;
+  --bad:#ef4444;
+  --shadow: 0 10px 22px rgba(0,0,0,.08);
+}
+
+*{ box-sizing:border-box; }
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:#0f172a;
+}
+
+header{
+  position:sticky;
+  top:0;
+  z-index:10;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92));
+  border-bottom:1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+.headerInner{
+  max-width:1100px;
+  margin:0 auto;
+  padding:12px 14px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.brand{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  min-width:220px;
+}
+.badge{
+  width:38px;height:38px;
+  border-radius:12px;
+  background:var(--accent);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-weight:900;
+}
+h1{
+  font-size:16px;
+  margin:0;
+  line-height:1.1;
+}
+.sub{
+  font-size:12px;
+  color:var(--muted);
+  margin:0;
+}
+.controls{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex:1 1 auto;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+select, button{
+  height:40px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#fff;
+  padding:0 12px;
+  font-weight:800;
+}
+button{
+  cursor:pointer;
+  border:0;
+  background:var(--accent);
+  color:#fff;
+}
+button.secondary{
+  background:#6b7280;
+}
+
+main{
+  max-width:1100px;
+  margin:0 auto;
+  padding:14px;
+  display:grid;
+  grid-template-columns: 1.25fr .75fr;
+  gap:14px;
+}
+@media (max-width:980px){
+  main{ grid-template-columns:1fr; }
+  .controls{ justify-content:flex-start; }
+  .brand{ min-width:unset; }
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow: var(--shadow);
+  overflow:hidden;
+}
+.cardHeader{
+  padding:12px 14px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+.cardTitle{
+  margin:0;
+  font-size:14px;
+}
+.cardHint{
+  margin:2px 0 0 0;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.cardBody{ padding:12px 14px; }
+
+.grid2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+@media (max-width:620px){
+  .grid2{ grid-template-columns:1fr; }
+}
+
+.bigNumber{
+  font-size:30px;
+  font-weight:950;
+  letter-spacing:-0.02em;
+  margin:0;
+}
+.smallLabel{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+.pillRow{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+.pill{
+  font-size:12px;
+  font-weight:900;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:#fff;
+}
+.pill.good{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.10); color:#0f5f2c; }
+.pill.warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12); color:#7a4b00; }
+.pill.bad { border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.12); color:#7a0c0c; }
+
+.bar{
+  height:10px;
+  background:#eef2f7;
+  border-radius:999px;
+  overflow:hidden;
+  border:1px solid rgba(0,0,0,.04);
+}
+.bar > div{
+  height:100%;
+  width:0%;
+  background:var(--accent);
+  border-radius:999px;
+}
+
+.sparkWrap{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  background:#fff;
+}
+.sparkTitle{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:6px;
+}
+.sparkTitle b{ font-size:13px; }
+.sparkTitle span{ font-size:12px; color:var(--muted); }
+
+.small{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.hr{ height:1px; background:var(--line); margin:12px 0; }
+
+.iconRow{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:10px;
+}
+@media (max-width:620px){
+  .iconRow{ grid-template-columns:repeat(2, 1fr); }
+}
+.tile{
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:10px;
+  background:#fff;
+}
+.tile .icon{
+  width:44px;height:44px;
+  border-radius:16px;
+  display:grid;
+  place-items:center;
+  font-weight:950;
+  color:#fff;
+  background:var(--accent);
+  margin-bottom:8px;
+}
+.tile b{ font-size:13px; display:block; margin-bottom:4px; }
+.tile span{ font-size:12px; color:var(--muted); display:block; }
+
+.q{
+  display:grid;
+  gap:10px;
+}
+.q .item{
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:10px 12px;
+  background:#fff;
+}
+.q .item b{
+  display:block;
+  font-size:13px;
+  margin-bottom:4px;
+}
+.q .item span{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+th,td{
+  padding:10px 8px;
+  border-bottom:1px solid #f1f5f9;
+  text-align:center;
+}
+th{
+  color:#fff;
+  background:var(--accent);
+  position:sticky;
+  top:0;
+}
+tbody tr:nth-child(even){ background:#fafafa; }
+tbody tr.me{ outline:2px solid rgba(1,88,113,.22); outline-offset:-2px; background:rgba(1,88,113,.06); }
+
+.notice{
+  max-width:900px;
+  margin:16px auto;
+  padding:14px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+}
+
+footer{
+  max-width:1100px;
+  margin:0 auto;
+  padding:10px 14px 24px 14px;
+  color:var(--muted);
+  font-size:12px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="headerInner">
+    <div class="brand">
+      <div class="badge">R</div>
+      <div>
+        <h1>Your Run Feedback</h1>
+        <p class="sub" id="metaLine">Loading…</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label class="small" for="runnerSel" style="font-weight:900;color:#0f172a;">View</label>
+      <select id="runnerSel" aria-label="Select runner"></select>
+      <button id="shareBtn" class="secondary" type="button">Copy Link</button>
+      <button id="clearBtn" type="button">Clear Data</button>
+    </div>
+  </div>
+</header>
+
+<div id="noData" class="notice" style="display:none;">
+  <b>No run data found.</b>
+  <div class="small" style="margin-top:6px;">
+    Go back to the lap counter page, press <b>Stop</b>, then <b>Detailed Summary</b>.
+  </div>
+</div>
+
+<main id="app" style="display:none;">
+  <!-- LEFT: learner-friendly feedback -->
+  <section class="card">
+    <div class="cardHeader">
+      <div>
+        <p class="cardTitle" id="runnerTitle">Runner</p>
+        <p class="cardHint">This page is for you: rhythm, feelings, effort, and support.</p>
+      </div>
+      <div class="pill" id="finishPill">—</div>
+    </div>
+
+    <div class="cardBody">
+      <div class="grid2">
+        <div class="tile">
+          <div class="icon" style="background:var(--good);">⏱</div>
+          <b id="finishLabel">Finish time</b>
+          <p class="bigNumber" id="finishTime" style="margin:6px 0 0 0;">—</p>
+          <div class="pillRow" id="finishPills"></div>
+        </div>
+
+        <div class="tile">
+          <div class="icon" style="background:#3b82f6;">〰</div>
+          <b>Rhythm score</b>
+          <p class="bigNumber" id="rhythmScore" style="margin:6px 0 0 0;">—</p>
+          <div class="bar" title="Rhythm consistency">
+            <div id="rhythmBar"></div>
+          </div>
+          <div class="small" id="rhythmNote" style="margin-top:6px;">—</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="sparkWrap">
+        <div class="sparkTitle">
+          <b>Lap trend (your pace story)</b>
+          <span id="trendHint">—</span>
+        </div>
+        <svg id="spark" width="100%" height="78" viewBox="0 0 600 78" role="img" aria-label="Lap trend sparkline">
+          <rect x="0" y="0" width="600" height="78" fill="rgba(1,88,113,.04)"></rect>
+          <path id="sparkPath" d="" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"></path>
+          <circle id="sparkDot" cx="0" cy="0" r="4" fill="var(--accent)"></circle>
+        </svg>
+        <div class="small" id="lapList" style="margin-top:8px;">—</div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- INFOS: paper-aligned, learner language -->
+      <div class="iconRow">
+        <div class="tile">
+          <div class="icon" style="background:var(--good);">☺</div>
+          <b>Feelings & motivation</b>
+          <span>Try: “I found a rhythm.” “I felt calmer.”</span>
+        </div>
+        <div class="tile">
+          <div class="icon" style="background:#3b82f6;">🤝</div>
+          <b>Social awareness</b>
+          <span>Notice effort. Encourage, don’t compare.</span>
+        </div>
+        <div class="tile">
+          <div class="icon" style="background:#8b5cf6;">🧠</div>
+          <b>Self-discovery</b>
+          <span>Spot flow, fatigue, breathing, steps.</span>
+        </div>
+        <div class="tile">
+          <div class="icon" style="background:#f59e0b;">💬</div>
+          <b>Learning together</b>
+          <span>Talk + feedback = confidence grows.</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- Quick “better feedback” prompt (moves away from only performance) -->
+      <div class="tile" style="background:rgba(1,88,113,.05);">
+        <b style="margin-bottom:6px;">Better feedback (say this, not that)</b>
+        <div class="small" style="color:#0f172a;">
+          <div><b>Instead of:</b> “You ran too slow / too fast.”</div>
+          <div style="margin-top:6px;"><b>Try:</b> “I noticed you kept trying.” “Let’s match our rhythm.” “You can do it!”</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- Reflection questions (short + student-facing) -->
+      <div class="q">
+        <div class="item">
+          <b>1) Rhythm</b>
+          <span>When did it feel smooth or “in flow”?</span>
+        </div>
+        <div class="item">
+          <b>2) Body signals</b>
+          <span>What did you notice (breathing, steps, tiredness)?</span>
+        </div>
+        <div class="item">
+          <b>3) Partner mirror</b>
+          <span>What effort did you notice in your partner? What can you encourage?</span>
+        </div>
+        <div class="item">
+          <b>4) Next run goal (pick one)</b>
+          <span>Smoother rhythm • steadier pace • calmer mindset • better support</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: group snapshot (infographic-ish + minimal words) -->
+  <aside class="card">
+    <div class="cardHeader">
+      <div>
+        <p class="cardTitle">Group snapshot</p>
+        <p class="cardHint">Cooperation & reflection help everyone enjoy pace running.</p>
+      </div>
+    </div>
+
+    <div class="cardBody">
+      <div class="grid2">
+        <div class="tile">
+          <div class="icon" style="background:var(--accent);">✓</div>
+          <b>Completion</b>
+          <p class="bigNumber" id="completionPct" style="margin:6px 0 0 0;">—</p>
+          <div class="bar"><div id="completionBar"></div></div>
+          <div class="small" id="completionNote" style="margin-top:6px;">—</div>
+        </div>
+
+        <div class="tile">
+          <div class="icon" style="background:#0ea5e9;">🌱</div>
+          <b>Mindset shift</b>
+          <span>From “only time” → to rhythm, effort, and feelings.</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="sparkWrap">
+        <div class="sparkTitle">
+          <b>Leaderboard (finish)</b>
+          <span class="small">DNF at bottom</span>
+        </div>
+        <div style="max-height:320px; overflow:auto; border-radius:12px;">
+          <table aria-label="Leaderboard">
+            <thead>
+              <tr>
+                <th>Runner</th>
+                <th>Finish</th>
+                <th>Rhythm</th>
+              </tr>
+            </thead>
+            <tbody id="leaderBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="tile" style="background:rgba(245,158,11,.10);">
+        <b>Quick team challenge</b>
+        <span>Pair up and try: “Let’s match our rhythm for 1 lap.”</span>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="tile" style="background:rgba(22,163,74,.10);">
+        <b>Very short takeaway</b>
+        <span>
+          Pace running can be meaningful when we run with others, reflect, and encourage.
+        </span>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  Reminder: PE is not only training — it’s also social learning (self-awareness, empathy, motivation, confidence).
+</footer>
+
+<script>
+(function(){
+  var STORE_KEY = 'topcodesLapSummaryV1';
+
+  var metaLine = document.getElementById('metaLine');
+  var noData = document.getElementById('noData');
+  var app = document.getElementById('app');
+
+  var runnerSel = document.getElementById('runnerSel');
+  var shareBtn = document.getElementById('shareBtn');
+  var clearBtn = document.getElementById('clearBtn');
+
+  var runnerTitle = document.getElementById('runnerTitle');
+  var finishPill = document.getElementById('finishPill');
+
+  var finishTimeEl = document.getElementById('finishTime');
+  var finishPills = document.getElementById('finishPills');
+
+  var rhythmScoreEl = document.getElementById('rhythmScore');
+  var rhythmBar = document.getElementById('rhythmBar');
+  var rhythmNote = document.getElementById('rhythmNote');
+
+  var trendHint = document.getElementById('trendHint');
+  var sparkPath = document.getElementById('sparkPath');
+  var sparkDot = document.getElementById('sparkDot');
+  var lapList = document.getElementById('lapList');
+
+  var completionPct = document.getElementById('completionPct');
+  var completionBar = document.getElementById('completionBar');
+  var completionNote = document.getElementById('completionNote');
+  var leaderBody = document.getElementById('leaderBody');
+
+  function safeParse(json){ try{ return JSON.parse(json); }catch(e){ return null; } }
+
+  function msToMMSS(ms){
+    if (!isFinite(ms)) return 'DNF';
+    var s = Math.floor(ms/1000);
+    var m = Math.floor(s/60);
+    var ss= s%60;
+    return (m<10?'0':'')+m+':' + (ss<10?'0':'')+ss;
+  }
+
+  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+
+  function mean(arr){
+    var s=0, c=0;
+    for (var i=0;i<arr.length;i++){
+      if (isFinite(arr[i])){ s += arr[i]; c++; }
+    }
+    return c? (s/c) : NaN;
+  }
+
+  function stddev(arr){
+    var m = mean(arr);
+    if (!isFinite(m)) return NaN;
+    var s=0, c=0;
+    for (var i=0;i<arr.length;i++){
+      if (isFinite(arr[i])){
+        var d = arr[i]-m;
+        s += d*d;
+        c++;
+      }
+    }
+    return c>1 ? Math.sqrt(s/(c-1)) : 0;
+  }
+
+  // Rhythm score from lap-to-lap variation: higher is steadier (0–100)
+  function rhythmScore(cumSplitsMs){
+    if (!cumSplitsMs || cumSplitsMs.length < 2){
+      return {score: 0, note: 'Need more laps to score rhythm.', perLap: []};
+    }
+    var per = [];
+    for (var i=0;i<cumSplitsMs.length;i++){
+      var prev = i===0 ? 0 : cumSplitsMs[i-1];
+      per.push(cumSplitsMs[i] - prev);
+    }
+    var m = mean(per);
+    var sd = stddev(per);
+    if (!isFinite(m) || m<=0) return {score: 0, note:'Not enough data.', perLap: per};
+    var cv = sd / m; // lower is better
+
+    var score = 100 * Math.exp(-6*cv);
+    score = Math.round(clamp(score, 0, 100));
+
+    var note =
+      (score>=75) ? 'Very steady — nice rhythm.' :
+      (score>=55) ? 'Steady — keep matching your steps + breathing.' :
+      (score>=35) ? 'Getting there — aim for smoother rhythm.' :
+                   'Let’s practice — focus on calm breathing + even steps.';
+
+    return {score: score, note: note, perLap: per};
+  }
+
+  function trendTag(perLap){
+    if (!perLap || perLap.length < 2) return {tag:'—', hint:'Need more laps for a trend.'};
+    var mid = Math.floor(perLap.length/2);
+    var a = mean(perLap.slice(0, mid));
+    var b = mean(perLap.slice(mid));
+    if (!isFinite(a) || !isFinite(b)) return {tag:'—', hint:'—'};
+    var diff = (b - a) / a; // + = slower later
+    if (diff <= -0.03) return {tag:'Strong finish', hint:'Later laps got faster.'};
+    if (diff < 0.03)   return {tag:'Even pacing', hint:'Your pace stayed steady.'};
+    return {tag:'Faded a bit', hint:'Later laps got slower — try smoother rhythm.'};
+  }
+
+  function buildSpark(perLap){
+    var W=600, H=78, pad=10;
+    if (!perLap || !perLap.length){
+      sparkPath.setAttribute('d','');
+      sparkDot.setAttribute('cx','0');
+      sparkDot.setAttribute('cy','0');
+      return;
+    }
+    var min=Infinity, max=-Infinity;
+    for (var i=0;i<perLap.length;i++){ min=Math.min(min, perLap[i]); max=Math.max(max, perLap[i]); }
+    if (!isFinite(min) || !isFinite(max) || min===max){ min = min||0; max = min+1; }
+
+    var dx = (W - pad*2) / Math.max(1, (perLap.length-1));
+    var d = '';
+    for (var j=0;j<perLap.length;j++){
+      var x = pad + j*dx;
+      var t = (perLap[j]-min)/(max-min);
+      var y = pad + (1-t)*(H - pad*2);
+      d += (j===0 ? 'M' : ' L') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    sparkPath.setAttribute('d', d);
+
+    var lastX = pad + (perLap.length-1)*dx;
+    var lastT = (perLap[perLap.length-1]-min)/(max-min);
+    var lastY = pad + (1-lastT)*(H - pad*2);
+    sparkDot.setAttribute('cx', lastX.toFixed(1));
+    sparkDot.setAttribute('cy', lastY.toFixed(1));
+  }
+
+  function setFinishPills(finished){
+    while (finishPills.firstChild) finishPills.removeChild(finishPills.firstChild);
+
+    if (!finished){
+      var p = document.createElement('span');
+      p.className = 'pill bad';
+      p.textContent = 'DNF (try again)';
+      finishPills.appendChild(p);
+
+      var q = document.createElement('span');
+      q.className = 'pill';
+      q.textContent = 'Goal: calm rhythm';
+      finishPills.appendChild(q);
+      return;
+    }
+
+    var p1 = document.createElement('span');
+    p1.className = 'pill good';
+    p1.textContent = 'Finish ✔';
+    finishPills.appendChild(p1);
+
+    var p2 = document.createElement('span');
+    p2.className = 'pill';
+    p2.textContent = 'Notice rhythm + feelings';
+    finishPills.appendChild(p2);
+
+    var p3 = document.createElement('span');
+    p3.className = 'pill';
+    p3.textContent = 'Encourage a partner';
+    finishPills.appendChild(p3);
+  }
+
+  function setLeaderTable(rows, selectedId){
+    while (leaderBody.firstChild) leaderBody.removeChild(leaderBody.firstChild);
+    for (var i=0;i<rows.length;i++){
+      var r = rows[i];
+      var tr = document.createElement('tr');
+      if (String(r.id) === String(selectedId)) tr.className = 'me';
+      tr.innerHTML =
+        '<td>'+r.id+'</td>' +
+        '<td>'+ (isFinite(r.finishMs) ? msToMMSS(r.finishMs) : 'DNF') +'</td>' +
+        '<td>'+ (isFinite(r.rhythm) ? (r.rhythm + '/100') : '—') +'</td>';
+      leaderBody.appendChild(tr);
+    }
+  }
+
+  function setGroupSnapshot(allRows){
+    var total = allRows.length;
+    var finished = 0;
+    for (var i=0;i<allRows.length;i++){
+      if (isFinite(allRows[i].finishMs)) finished++;
+    }
+    var pct = total ? Math.round((finished/total)*100) : 0;
+    completionPct.textContent = pct + '%';
+    completionBar.style.width = pct + '%';
+    completionNote.textContent = finished + ' of ' + total + ' finished.';
+  }
+
+  function buildRunnerOptions(runners){
+    while (runnerSel.firstChild) runnerSel.removeChild(runnerSel.firstChild);
+
+    var opt0 = document.createElement('option');
+    opt0.value = '__group__';
+    opt0.textContent = 'Group (Everyone)';
+    runnerSel.appendChild(opt0);
+
+    for (var i=0;i<runners.length;i++){
+      var opt = document.createElement('option');
+      opt.value = String(runners[i].id);
+      opt.textContent = 'Runner ' + runners[i].id;
+      runnerSel.appendChild(opt);
+    }
+  }
+
+  function applyMeta(data){
+    var when = data.createdAt ? new Date(data.createdAt) : null;
+    var whenStr = when && !isNaN(when.getTime()) ? when.toLocaleString() : '—';
+    metaLine.textContent =
+      (data.runDistanceMeters ? (data.runDistanceMeters + ' m') : 'Run') +
+      ' • ' + (data.lapsConfig ? (data.lapsConfig + ' laps') : '') +
+      ' • ' + whenStr;
+  }
+
+  function getRunnerFromQuery(){
+    var params = new URLSearchParams(location.search);
+    return params.get('runner');
+  }
+  function setQueryRunner(val){
+    var params = new URLSearchParams(location.search);
+    if (!val || val === '__group__') params.delete('runner');
+    else params.set('runner', val);
+    var newUrl = location.pathname + (params.toString() ? ('?' + params.toString()) : '');
+    history.replaceState(null, '', newUrl);
+  }
+
+  function showGroupMode(data, selectedId){
+    runnerTitle.textContent = 'Everyone';
+    finishPill.textContent = 'Group';
+    finishPill.className = 'pill';
+
+    finishTimeEl.textContent = data.lapsConfig + ' laps';
+    setFinishPills(true);
+
+    rhythmScoreEl.textContent = 'Together';
+    rhythmBar.style.width = '100%';
+    rhythmNote.textContent = 'Today’s goal: match rhythm, support each other, and reflect.';
+
+    trendHint.textContent = 'From “only time” → to rhythm, effort, feelings.';
+    sparkPath.setAttribute('d','');
+    sparkDot.setAttribute('cx','0');
+    sparkDot.setAttribute('cy','0');
+    lapList.textContent = 'Try: “You can do it!” • “Let’s match our rhythm!”';
+
+    var rows = [];
+    for (var i=0;i<data.runners.length;i++){
+      var r = data.runners[i];
+      var finishMs = r.splitsMs && r.splitsMs.length ? r.splitsMs[r.splitsMs.length-1] : NaN;
+      var rsObj = rhythmScore(r.splitsMs || []);
+      rows.push({ id:r.id, finishMs: finishMs, rhythm: rsObj.score });
+    }
+    rows.sort(function(a,b){
+      var fa = a.finishMs, fb = b.finishMs;
+      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
+      if (!isFinite(fa)) return 1;
+      if (!isFinite(fb)) return -1;
+      return fa - fb;
+    });
+
+    setGroupSnapshot(rows);
+    setLeaderTable(rows, selectedId);
+  }
+
+  function showRunnerMode(data, runnerId){
+    var r = null;
+    for (var i=0;i<data.runners.length;i++){
+      if (String(data.runners[i].id) === String(runnerId)){
+        r = data.runners[i]; break;
+      }
+    }
+    if (!r){ showGroupMode(data, runnerId); return; }
+
+    runnerTitle.textContent = 'Runner ' + r.id;
+    finishPill.textContent = r.finished ? 'Finished' : 'DNF';
+    finishPill.className = 'pill ' + (r.finished ? 'good' : 'bad');
+
+    var splits = r.splitsMs || [];
+    var finishMs = splits.length ? splits[splits.length-1] : NaN;
+
+    finishTimeEl.textContent = isFinite(finishMs) ? msToMMSS(finishMs) : 'DNF';
+    setFinishPills(!!r.finished);
+
+    var rs = rhythmScore(splits);
+    rhythmScoreEl.textContent = rs.score + '/100';
+    rhythmBar.style.width = rs.score + '%';
+    rhythmNote.textContent = rs.note;
+
+    var perLap = rs.perLap || [];
+    var t = trendTag(perLap);
+    trendHint.textContent = t.tag + ' • ' + t.hint;
+
+    buildSpark(perLap);
+
+    if (!perLap.length){
+      lapList.textContent = 'No lap trend available.';
+    } else {
+      var out = [];
+      for (var j=0;j<perLap.length;j++){
+        out.push('Lap ' + (j+1) + ': ' + msToMMSS(perLap[j]));
+      }
+      lapList.textContent = out.join('  •  ');
+    }
+
+    var rows = [];
+    for (var k=0;k<data.runners.length;k++){
+      var rr = data.runners[k];
+      var fms = rr.splitsMs && rr.splitsMs.length ? rr.splitsMs[rr.splitsMs.length-1] : NaN;
+      var rrScore = rhythmScore(rr.splitsMs || []).score;
+      rows.push({ id: rr.id, finishMs: fms, rhythm: rrScore });
+    }
+    rows.sort(function(a,b){
+      var fa = a.finishMs, fb = b.finishMs;
+      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
+      if (!isFinite(fa)) return 1;
+      if (!isFinite(fb)) return -1;
+      return fa - fb;
+    });
+
+    setGroupSnapshot(rows);
+    setLeaderTable(rows, r.id);
+  }
+
+  function readData(){
+    var raw = localStorage.getItem(STORE_KEY);
+    var data = safeParse(raw || '');
+    if (!data || !data.runners || !Array.isArray(data.runners)){
+      noData.style.display = 'block';
+      app.style.display = 'none';
+      metaLine.textContent = 'No data yet';
+      return null;
+    }
+    return data;
+  }
+
+  function refresh(){
+    var data = readData();
+    if (!data) return;
+
+    noData.style.display = 'none';
+    app.style.display = 'grid';
+
+    applyMeta(data);
+
+    data.runners.sort(function(a,b){ return Number(a.id) - Number(b.id); });
+    buildRunnerOptions(data.runners);
+
+    var q = getRunnerFromQuery();
+    if (q && q !== '__group__'){
+      runnerSel.value = q;
+      if (runnerSel.value !== q) runnerSel.value = '__group__';
+    } else {
+      runnerSel.value = '__group__';
+    }
+
+    if (runnerSel.value === '__group__') showGroupMode(data, q);
+    else showRunnerMode(data, runnerSel.value);
+  }
+
+  runnerSel.addEventListener('change', function(){
+    setQueryRunner(runnerSel.value);
+    refresh();
+  });
+
+  shareBtn.addEventListener('click', async function(){
+    try{
+      await navigator.clipboard.writeText(location.href);
+      shareBtn.textContent = 'Copied!';
+      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
+    }catch(e){
+      shareBtn.textContent = 'Copy failed';
+      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
+    }
+  });
+
+  clearBtn.addEventListener('click', function(){
+    localStorage.removeItem(STORE_KEY);
+    refresh();
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>
