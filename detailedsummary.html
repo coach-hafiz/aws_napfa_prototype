@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Run Feedback — Your Summary</title>
+<title>Run Feedback — Learner Page</title>
 <style>
 :root{
   --accent:#015871;
@@ -14,9 +14,10 @@
   --good:#16a34a;
   --warn:#f59e0b;
   --bad:#ef4444;
-  --shadow: 0 10px 22px rgba(0,0,0,.08);
+  --blue:#2563eb;
+  --purple:#7c3aed;
+  --shadow:0 10px 22px rgba(0,0,0,.08);
 }
-
 *{ box-sizing:border-box; }
 body{
   margin:0;
@@ -24,14 +25,13 @@ body{
   background:var(--bg);
   color:#0f172a;
 }
-
 header{
   position:sticky;
   top:0;
   z-index:10;
   background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92));
   border-bottom:1px solid var(--line);
-  backdrop-filter: blur(8px);
+  backdrop-filter:blur(8px);
 }
 .headerInner{
   max-width:1100px;
@@ -49,7 +49,7 @@ header{
   min-width:220px;
 }
 .badge{
-  width:38px;height:38px;
+  width:40px;height:40px;
   border-radius:12px;
   background:var(--accent);
   color:#fff;
@@ -98,7 +98,7 @@ main{
   margin:0 auto;
   padding:14px;
   display:grid;
-  grid-template-columns: 1.25fr .75fr;
+  grid-template-columns:1.18fr .82fr;
   gap:14px;
 }
 @media (max-width:980px){
@@ -111,7 +111,7 @@ main{
   background:var(--card);
   border:1px solid var(--line);
   border-radius:18px;
-  box-shadow: var(--shadow);
+  box-shadow:var(--shadow);
   overflow:hidden;
 }
 .cardHeader{
@@ -131,7 +131,6 @@ main{
   font-size:12px;
   color:var(--muted);
 }
-
 .cardBody{ padding:12px 14px; }
 
 .grid2{
@@ -153,7 +152,39 @@ main{
   margin:0;
   color:var(--muted);
   font-size:12px;
-  font-weight:700;
+  font-weight:800;
+}
+.small{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.tile{
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:10px;
+  background:#fff;
+}
+.tile .icon{
+  width:44px;height:44px;
+  border-radius:16px;
+  display:grid;
+  place-items:center;
+  font-weight:950;
+  color:#fff;
+  background:var(--accent);
+  margin-bottom:8px;
+  font-size:18px;
+}
+.tile b{
+  display:block;
+  font-size:13px;
+  margin-bottom:4px;
+}
+.tile span{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
 }
 
 .pillRow{
@@ -172,7 +203,8 @@ main{
 }
 .pill.good{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.10); color:#0f5f2c; }
 .pill.warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12); color:#7a4b00; }
-.pill.bad { border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.12); color:#7a0c0c; }
+.pill.bad{ border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.12); color:#7a0c0c; }
+.pill.blue{ border-color:rgba(37,99,235,.35); background:rgba(37,99,235,.10); color:#133f94; }
 
 .bar{
   height:10px;
@@ -204,11 +236,6 @@ main{
 .sparkTitle b{ font-size:13px; }
 .sparkTitle span{ font-size:12px; color:var(--muted); }
 
-.small{
-  font-size:12px;
-  color:var(--muted);
-}
-
 .hr{ height:1px; background:var(--line); margin:12px 0; }
 
 .iconRow{
@@ -219,24 +246,6 @@ main{
 @media (max-width:620px){
   .iconRow{ grid-template-columns:repeat(2, 1fr); }
 }
-.tile{
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:10px;
-  background:#fff;
-}
-.tile .icon{
-  width:44px;height:44px;
-  border-radius:16px;
-  display:grid;
-  place-items:center;
-  font-weight:950;
-  color:#fff;
-  background:var(--accent);
-  margin-bottom:8px;
-}
-.tile b{ font-size:13px; display:block; margin-bottom:4px; }
-.tile span{ font-size:12px; color:var(--muted); display:block; }
 
 .q{
   display:grid;
@@ -259,6 +268,46 @@ main{
   color:var(--muted);
 }
 
+.checklist{
+  display:grid;
+  gap:8px;
+}
+.check{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  background:#fff;
+}
+.check .dot{
+  width:24px;height:24px;
+  border-radius:999px;
+  background:var(--accent);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  flex:0 0 auto;
+  font-size:13px;
+}
+.check b{
+  display:block;
+  font-size:13px;
+  margin-bottom:2px;
+}
+.check span{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.tableWrap{
+  max-height:320px;
+  overflow:auto;
+  border-radius:12px;
+}
 table{
   width:100%;
   border-collapse:collapse;
@@ -287,7 +336,6 @@ tbody tr.me{ outline:2px solid rgba(1,88,113,.22); outline-offset:-2px; backgrou
   border-radius:16px;
   box-shadow:var(--shadow);
 }
-
 footer{
   max-width:1100px;
   margin:0 auto;
@@ -326,41 +374,41 @@ footer{
 </div>
 
 <main id="app" style="display:none;">
-  <!-- LEFT: learner-friendly feedback -->
+  <!-- LEFT -->
   <section class="card">
     <div class="cardHeader">
       <div>
         <p class="cardTitle" id="runnerTitle">Runner</p>
-        <p class="cardHint">This page is for you: rhythm, feelings, effort, and support.</p>
+        <p class="cardHint">A simple learner page: rhythm, effort, feelings, and support.</p>
       </div>
       <div class="pill" id="finishPill">—</div>
     </div>
 
     <div class="cardBody">
+      <!-- STP: Checking for Understanding and Providing Feedback -->
       <div class="grid2">
         <div class="tile">
           <div class="icon" style="background:var(--good);">⏱</div>
-          <b id="finishLabel">Finish time</b>
+          <b>My run</b>
           <p class="bigNumber" id="finishTime" style="margin:6px 0 0 0;">—</p>
           <div class="pillRow" id="finishPills"></div>
         </div>
 
         <div class="tile">
-          <div class="icon" style="background:#3b82f6;">〰</div>
-          <b>Rhythm score</b>
+          <div class="icon" style="background:var(--blue);">〰</div>
+          <b>My rhythm</b>
           <p class="bigNumber" id="rhythmScore" style="margin:6px 0 0 0;">—</p>
-          <div class="bar" title="Rhythm consistency">
-            <div id="rhythmBar"></div>
-          </div>
+          <div class="bar"><div id="rhythmBar"></div></div>
           <div class="small" id="rhythmNote" style="margin-top:6px;">—</div>
         </div>
       </div>
 
       <div class="hr"></div>
 
+      <!-- STP: Using Questions to Deepen Learning -->
       <div class="sparkWrap">
         <div class="sparkTitle">
-          <b>Lap trend (your pace story)</b>
+          <b>Lap trend</b>
           <span id="trendHint">—</span>
         </div>
         <svg id="spark" width="100%" height="78" viewBox="0 0 600 78" role="img" aria-label="Lap trend sparkline">
@@ -373,71 +421,104 @@ footer{
 
       <div class="hr"></div>
 
-      <!-- INFOS: paper-aligned, learner language -->
+      <!-- STP: Setting Expectations and Routines -->
+      <div class="tile" style="background:rgba(1,88,113,.05);">
+        <b>What good pace running looks like</b>
+        <div class="pillRow" style="margin-top:8px;">
+          <span class="pill blue">Find your rhythm</span>
+          <span class="pill blue">Notice your breathing</span>
+          <span class="pill blue">Encourage your partner</span>
+          <span class="pill blue">Finish with control</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- STP: Empowering Learners / Encouraging Engagement -->
       <div class="iconRow">
         <div class="tile">
           <div class="icon" style="background:var(--good);">☺</div>
-          <b>Feelings & motivation</b>
-          <span>Try: “I found a rhythm.” “I felt calmer.”</span>
+          <b>Feelings</b>
+          <span>Success is not only time. Notice calm, effort, and confidence.</span>
         </div>
         <div class="tile">
-          <div class="icon" style="background:#3b82f6;">🤝</div>
-          <b>Social awareness</b>
+          <div class="icon" style="background:var(--blue);">🤝</div>
+          <b>Partner support</b>
           <span>Notice effort. Encourage, don’t compare.</span>
         </div>
         <div class="tile">
-          <div class="icon" style="background:#8b5cf6;">🧠</div>
+          <div class="icon" style="background:var(--purple);">🧠</div>
           <b>Self-discovery</b>
-          <span>Spot flow, fatigue, breathing, steps.</span>
+          <span>Spot rhythm, flow, fatigue, and body signals.</span>
         </div>
         <div class="tile">
-          <div class="icon" style="background:#f59e0b;">💬</div>
-          <b>Learning together</b>
-          <span>Talk + feedback = confidence grows.</span>
+          <div class="icon" style="background:var(--warn);">💬</div>
+          <b>Better feedback</b>
+          <span>Try kind, helpful words with your partner.</span>
         </div>
       </div>
 
       <div class="hr"></div>
 
-      <!-- Quick “better feedback” prompt (moves away from only performance) -->
-      <div class="tile" style="background:rgba(1,88,113,.05);">
-        <b style="margin-bottom:6px;">Better feedback (say this, not that)</b>
-        <div class="small" style="color:#0f172a;">
-          <div><b>Instead of:</b> “You ran too slow / too fast.”</div>
-          <div style="margin-top:6px;"><b>Try:</b> “I noticed you kept trying.” “Let’s match our rhythm.” “You can do it!”</div>
+      <!-- STP: Facilitating Collaborative Learning -->
+      <div class="checklist">
+        <div class="check">
+          <div class="dot">1</div>
+          <div>
+            <b>Instead of only saying “too slow / too fast”...</b>
+            <span>Try: “I found a rhythm.” “I felt more relaxed.” “I noticed you kept trying.”</span>
+          </div>
+        </div>
+        <div class="check">
+          <div class="dot">2</div>
+          <div>
+            <b>Running with others helps learning</b>
+            <span>Your partner can be a mirror. You learn about yourself by observing and supporting each other.</span>
+          </div>
+        </div>
+        <div class="check">
+          <div class="dot">3</div>
+          <div>
+            <b>Cooperation beats competition</b>
+            <span>Try: “You can do it!” “Let’s match our rhythm!”</span>
+          </div>
         </div>
       </div>
 
       <div class="hr"></div>
 
-      <!-- Reflection questions (short + student-facing) -->
+      <!-- STP: Supporting Self-Directed Learning / Using Questions -->
       <div class="q">
         <div class="item">
-          <b>1) Rhythm</b>
-          <span>When did it feel smooth or “in flow”?</span>
+          <b>1) What did you notice about your rhythm?</b>
+          <span>Did it feel smooth, steady, rushed, or tiring?</span>
         </div>
         <div class="item">
-          <b>2) Body signals</b>
-          <span>What did you notice (breathing, steps, tiredness)?</span>
+          <b>2) What did your body tell you?</b>
+          <span>Think about breathing, steps, flow, and fatigue.</span>
         </div>
         <div class="item">
-          <b>3) Partner mirror</b>
-          <span>What effort did you notice in your partner? What can you encourage?</span>
+          <b>3) What did you notice about your partner?</b>
+          <span>What effort, challenge, or improvement did you see?</span>
         </div>
         <div class="item">
-          <b>4) Next run goal (pick one)</b>
-          <span>Smoother rhythm • steadier pace • calmer mindset • better support</span>
+          <b>4) What encouragement can you give?</b>
+          <span>Say something supportive, specific, and kind.</span>
+        </div>
+        <div class="item">
+          <b>5) Pick one next-step goal</b>
+          <span>Smoother rhythm • calmer breathing • steadier pace • support a partner better</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- RIGHT: group snapshot (infographic-ish + minimal words) -->
+  <!-- RIGHT -->
   <aside class="card">
     <div class="cardHeader">
       <div>
         <p class="cardTitle">Group snapshot</p>
-        <p class="cardHint">Cooperation & reflection help everyone enjoy pace running.</p>
+        <p class="cardHint">PE is not only physical training. It is also social learning.</p>
       </div>
     </div>
 
@@ -452,20 +533,39 @@ footer{
         </div>
 
         <div class="tile">
-          <div class="icon" style="background:#0ea5e9;">🌱</div>
-          <b>Mindset shift</b>
-          <span>From “only time” → to rhythm, effort, and feelings.</span>
+          <div class="icon" style="background:var(--blue);">🌱</div>
+          <b>Big idea</b>
+          <span>From only “run fast” → to rhythm, effort, feelings, and mutual support.</span>
         </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="tile" style="background:rgba(22,163,74,.10);">
+        <b>What students can grow in</b>
+        <div class="pillRow" style="margin-top:8px;">
+          <span class="pill good">Self-awareness</span>
+          <span class="pill good">Empathy</span>
+          <span class="pill good">Motivation</span>
+          <span class="pill good">Confidence</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="tile" style="background:rgba(245,158,11,.10);">
+        <b>Quick pair challenge</b>
+        <span>For 1 lap, match your rhythm with a partner and encourage each other.</span>
       </div>
 
       <div class="hr"></div>
 
       <div class="sparkWrap">
         <div class="sparkTitle">
-          <b>Leaderboard (finish)</b>
-          <span class="small">DNF at bottom</span>
+          <b>Leaderboard</b>
+          <span class="small">Finish time + rhythm</span>
         </div>
-        <div style="max-height:320px; overflow:auto; border-radius:12px;">
+        <div class="tableWrap">
           <table aria-label="Leaderboard">
             <thead>
               <tr>
@@ -481,17 +581,10 @@ footer{
 
       <div class="hr"></div>
 
-      <div class="tile" style="background:rgba(245,158,11,.10);">
-        <b>Quick team challenge</b>
-        <span>Pair up and try: “Let’s match our rhythm for 1 lap.”</span>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="tile" style="background:rgba(22,163,74,.10);">
+      <div class="tile" style="background:rgba(1,88,113,.05);">
         <b>Very short takeaway</b>
         <span>
-          Pace running can be meaningful when we run with others, reflect, and encourage.
+          Pace running becomes more meaningful when learners reflect, support one another, and understand their own rhythm and effort.
         </span>
       </div>
     </div>
@@ -499,7 +592,7 @@ footer{
 </main>
 
 <footer>
-  Reminder: PE is not only training — it’s also social learning (self-awareness, empathy, motivation, confidence).
+  Learner reminder: success is not only about speed. It is also about rhythm, effort, feelings, and how you support others.
 </footer>
 
 <script>
@@ -534,7 +627,9 @@ footer{
   var completionNote = document.getElementById('completionNote');
   var leaderBody = document.getElementById('leaderBody');
 
-  function safeParse(json){ try{ return JSON.parse(json); }catch(e){ return null; } }
+  function safeParse(json){
+    try{ return JSON.parse(json); }catch(e){ return null; }
+  }
 
   function msToMMSS(ms){
     if (!isFinite(ms)) return 'DNF';
@@ -568,10 +663,9 @@ footer{
     return c>1 ? Math.sqrt(s/(c-1)) : 0;
   }
 
-  // Rhythm score from lap-to-lap variation: higher is steadier (0–100)
   function rhythmScore(cumSplitsMs){
     if (!cumSplitsMs || cumSplitsMs.length < 2){
-      return {score: 0, note: 'Need more laps to score rhythm.', perLap: []};
+      return {score: 0, note: 'Need more laps to show rhythm.', perLap: []};
     }
     var per = [];
     for (var i=0;i<cumSplitsMs.length;i++){
@@ -581,17 +675,16 @@ footer{
     var m = mean(per);
     var sd = stddev(per);
     if (!isFinite(m) || m<=0) return {score: 0, note:'Not enough data.', perLap: per};
-    var cv = sd / m; // lower is better
 
+    var cv = sd / m;
     var score = 100 * Math.exp(-6*cv);
     score = Math.round(clamp(score, 0, 100));
 
     var note =
-      (score>=75) ? 'Very steady — nice rhythm.' :
-      (score>=55) ? 'Steady — keep matching your steps + breathing.' :
-      (score>=35) ? 'Getting there — aim for smoother rhythm.' :
-                   'Let’s practice — focus on calm breathing + even steps.';
-
+      (score>=75) ? 'Very steady. Nice rhythm.' :
+      (score>=55) ? 'Quite steady. Keep matching steps and breathing.' :
+      (score>=35) ? 'Getting there. Aim for smoother rhythm.' :
+                    'Keep practicing. Start calm and stay even.';
     return {score: score, note: note, perLap: per};
   }
 
@@ -601,10 +694,10 @@ footer{
     var a = mean(perLap.slice(0, mid));
     var b = mean(perLap.slice(mid));
     if (!isFinite(a) || !isFinite(b)) return {tag:'—', hint:'—'};
-    var diff = (b - a) / a; // + = slower later
-    if (diff <= -0.03) return {tag:'Strong finish', hint:'Later laps got faster.'};
+    var diff = (b - a) / a;
+    if (diff <= -0.03) return {tag:'Strong finish', hint:'Later laps were faster.'};
     if (diff < 0.03)   return {tag:'Even pacing', hint:'Your pace stayed steady.'};
-    return {tag:'Faded a bit', hint:'Later laps got slower — try smoother rhythm.'};
+    return {tag:'Faded a bit', hint:'Later laps slowed down.'};
   }
 
   function buildSpark(perLap){
@@ -616,9 +709,14 @@ footer{
       return;
     }
     var min=Infinity, max=-Infinity;
-    for (var i=0;i<perLap.length;i++){ min=Math.min(min, perLap[i]); max=Math.max(max, perLap[i]); }
-    if (!isFinite(min) || !isFinite(max) || min===max){ min = min||0; max = min+1; }
-
+    for (var i=0;i<perLap.length;i++){
+      min=Math.min(min, perLap[i]);
+      max=Math.max(max, perLap[i]);
+    }
+    if (!isFinite(min) || !isFinite(max) || min===max){
+      min = min || 0;
+      max = min + 1;
+    }
     var dx = (W - pad*2) / Math.max(1, (perLap.length-1));
     var d = '';
     for (var j=0;j<perLap.length;j++){
@@ -640,32 +738,32 @@ footer{
     while (finishPills.firstChild) finishPills.removeChild(finishPills.firstChild);
 
     if (!finished){
-      var p = document.createElement('span');
-      p.className = 'pill bad';
-      p.textContent = 'DNF (try again)';
-      finishPills.appendChild(p);
+      var p1 = document.createElement('span');
+      p1.className = 'pill bad';
+      p1.textContent = 'DNF';
+      finishPills.appendChild(p1);
 
-      var q = document.createElement('span');
-      q.className = 'pill';
-      q.textContent = 'Goal: calm rhythm';
-      finishPills.appendChild(q);
+      var p2 = document.createElement('span');
+      p2.className = 'pill';
+      p2.textContent = 'Next: calm start';
+      finishPills.appendChild(p2);
       return;
     }
 
-    var p1 = document.createElement('span');
-    p1.className = 'pill good';
-    p1.textContent = 'Finish ✔';
-    finishPills.appendChild(p1);
+    var a = document.createElement('span');
+    a.className = 'pill good';
+    a.textContent = 'Finished';
+    finishPills.appendChild(a);
 
-    var p2 = document.createElement('span');
-    p2.className = 'pill';
-    p2.textContent = 'Notice rhythm + feelings';
-    finishPills.appendChild(p2);
+    var b = document.createElement('span');
+    b.className = 'pill blue';
+    b.textContent = 'Notice your rhythm';
+    finishPills.appendChild(b);
 
-    var p3 = document.createElement('span');
-    p3.className = 'pill';
-    p3.textContent = 'Encourage a partner';
-    finishPills.appendChild(p3);
+    var c = document.createElement('span');
+    c.className = 'pill';
+    c.textContent = 'Support a partner';
+    finishPills.appendChild(c);
   }
 
   function setLeaderTable(rows, selectedId){
@@ -676,8 +774,8 @@ footer{
       if (String(r.id) === String(selectedId)) tr.className = 'me';
       tr.innerHTML =
         '<td>'+r.id+'</td>' +
-        '<td>'+ (isFinite(r.finishMs) ? msToMMSS(r.finishMs) : 'DNF') +'</td>' +
-        '<td>'+ (isFinite(r.rhythm) ? (r.rhythm + '/100') : '—') +'</td>';
+        '<td>'+(isFinite(r.finishMs) ? msToMMSS(r.finishMs) : 'DNF')+'</td>' +
+        '<td>'+(isFinite(r.rhythm) ? (r.rhythm + '/100') : '—')+'</td>';
       leaderBody.appendChild(tr);
     }
   }
@@ -723,6 +821,7 @@ footer{
     var params = new URLSearchParams(location.search);
     return params.get('runner');
   }
+
   function setQueryRunner(val){
     var params = new URLSearchParams(location.search);
     if (!val || val === '__group__') params.delete('runner');
@@ -741,13 +840,13 @@ footer{
 
     rhythmScoreEl.textContent = 'Together';
     rhythmBar.style.width = '100%';
-    rhythmNote.textContent = 'Today’s goal: match rhythm, support each other, and reflect.';
+    rhythmNote.textContent = 'Today’s focus: rhythm, effort, feelings, and support.';
 
-    trendHint.textContent = 'From “only time” → to rhythm, effort, feelings.';
+    trendHint.textContent = 'From “only speed” to better awareness and support.';
     sparkPath.setAttribute('d','');
     sparkDot.setAttribute('cx','0');
     sparkDot.setAttribute('cy','0');
-    lapList.textContent = 'Try: “You can do it!” • “Let’s match our rhythm!”';
+    lapList.textContent = 'Try saying: “You can do it!” or “Let’s match our rhythm!”';
 
     var rows = [];
     for (var i=0;i<data.runners.length;i++){
@@ -772,10 +871,14 @@ footer{
     var r = null;
     for (var i=0;i<data.runners.length;i++){
       if (String(data.runners[i].id) === String(runnerId)){
-        r = data.runners[i]; break;
+        r = data.runners[i];
+        break;
       }
     }
-    if (!r){ showGroupMode(data, runnerId); return; }
+    if (!r){
+      showGroupMode(data, runnerId);
+      return;
+    }
 
     runnerTitle.textContent = 'Runner ' + r.id;
     finishPill.textContent = r.finished ? 'Finished' : 'DNF';
@@ -795,11 +898,10 @@ footer{
     var perLap = rs.perLap || [];
     var t = trendTag(perLap);
     trendHint.textContent = t.tag + ' • ' + t.hint;
-
     buildSpark(perLap);
 
     if (!perLap.length){
-      lapList.textContent = 'No lap trend available.';
+      lapList.textContent = 'No lap trend available yet.';
     } else {
       var out = [];
       for (var j=0;j<perLap.length;j++){
@@ -848,7 +950,7 @@ footer{
 
     applyMeta(data);
 
-    data.runners.sort(function(a,b){ return Number(a.id) - Number(b.id); });
+    data.runners.sort(function(a,b){ return Number(a.id)-Number(b.id); });
     buildRunnerOptions(data.runners);
 
     var q = getRunnerFromQuery();
