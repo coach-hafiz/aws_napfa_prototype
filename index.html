@@ -5,7 +5,6 @@
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>TopCodes Lap Counter</title>
-
 <style>
 :root{
   --accent:#015871;
@@ -22,23 +21,26 @@ body{
 
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait: bigger camera view */
+/* Portrait */
 @media (orientation:portrait){
   .app{
     grid-template-rows: 62vh 1fr;
     grid-template-columns: 1fr;
-    grid-template-areas: "top" "bottom";
+    grid-template-areas:
+      "top"
+      "bottom";
   }
   .top{ grid-area: top; }
   .bottom{ grid-area: bottom; }
 }
 
-/* Landscape: give video a bit more space */
+/* Landscape */
 @media (orientation:landscape){
   .app{
     grid-template-columns: 1.15fr 0.85fr;
     grid-template-rows: 100vh;
-    grid-template-areas: "left right";
+    grid-template-areas:
+      "left right";
   }
   .top{ grid-area: left; height:100vh; }
   .bottom{ grid-area: right; height:100vh; }
@@ -50,24 +52,20 @@ body{
   overflow:hidden;
 }
 
-/* Canvas TopCodes draws into */
 #view{
   width:100%;
   height:100%;
   display:block;
   background:#000;
   touch-action:none;
-  transform:none; /* IMPORTANT: do NOT mirror the canvas */
 }
 
-/* IMPORTANT: Some devices/implementations end up mirroring the <video>.
-   Force un-mirrored display for the TopCodes video element. */
+/* Unmirror the TopCodes-created video */
 #view-video{
   transform:none !important;
   -webkit-transform:none !important;
 }
 
-/* Controls overlay */
 .controls{
   position:absolute;
   left:0; right:0; top:0;
@@ -180,7 +178,6 @@ tr.done{ background:#e9f6ec }
 }
 </style>
 </head>
-
 <body>
 <div class="app">
   <section class="top">
@@ -190,18 +187,16 @@ tr.done{ background:#e9f6ec }
       <div class="controls-row">
         <button id="enableBtn">Enable Camera</button>
         <button id="disableBtn" class="secondary" disabled>Disable Cam</button>
-
         <button id="swapBtn" class="secondary" disabled>Switch: Back</button>
 
         <button id="startBtn" class="secondary" disabled>Start</button>
-        <button id="stopBtn"  class="secondary" disabled>Stop</button>
+        <button id="stopBtn" class="secondary" disabled>Stop</button>
         <div class="timer" id="timer">00:00</div>
 
         <button id="exportBtn" class="secondary" disabled>Export CSV</button>
         <button id="summaryBtn" class="secondary" disabled>Detailed Summary</button>
 
         <span class="spacer"></span>
-
         <span style="font-size:11px;color:#555">
           Aim TopCodes so they cross the red line.
         </span>
@@ -241,7 +236,6 @@ tr.done{ background:#e9f6ec }
   </section>
 </div>
 
-<!-- TopCodes library -->
 <script src="https://cdn.jsdelivr.net/gh/TIDAL-Lab/TopCodes@master/javascript/topcodes.js"></script>
 
 <script>
@@ -249,42 +243,41 @@ tr.done{ background:#e9f6ec }
   var canvas   = document.getElementById('view');
   var ctx      = canvas.getContext('2d', { willReadFrequently:true });
 
-  var statusEl  = document.getElementById('status');
-  var tbody     = document.getElementById('tbody');
-  var timerEl   = document.getElementById('timer');
+  var statusEl   = document.getElementById('status');
+  var tbody      = document.getElementById('tbody');
+  var timerEl    = document.getElementById('timer');
 
-  var enableBtn = document.getElementById('enableBtn');
-  var disableBtn= document.getElementById('disableBtn');
-  var swapBtn   = document.getElementById('swapBtn');
+  var enableBtn  = document.getElementById('enableBtn');
+  var disableBtn = document.getElementById('disableBtn');
+  var swapBtn    = document.getElementById('swapBtn');
 
-  var startBtn  = document.getElementById('startBtn');
-  var stopBtn   = document.getElementById('stopBtn');
-  var exportBtn = document.getElementById('exportBtn');
-  var summaryBtn= document.getElementById('summaryBtn');
+  var startBtn   = document.getElementById('startBtn');
+  var stopBtn    = document.getElementById('stopBtn');
+  var exportBtn  = document.getElementById('exportBtn');
+  var summaryBtn = document.getElementById('summaryBtn');
 
-  var lapsSel   = document.getElementById('lapsSel');
+  var lapsSel    = document.getElementById('lapsSel');
   var distanceInput = document.getElementById('distanceInput');
-  var lapInfoEl = document.getElementById('lapInfo');
+  var lapInfoEl  = document.getElementById('lapInfo');
 
   var cameraActive = false;
-  var scanningActive = false; // TopCodes toggler state (we manage it)
-  var starting = false;
+  var scanningStarted = false;
+  var startingCamera = false;
 
-  // Facing mode: "environment" = rear, "user" = front
-  var facingMode = "environment";
+  var facingMode = 'environment'; // rear by default
+
   function updateSwapLabel(){
-    swapBtn.textContent = "Switch: " + (facingMode === "environment" ? "Back" : "Front");
+    swapBtn.textContent = 'Switch: ' + (facingMode === 'environment' ? 'Back' : 'Front');
   }
   updateSwapLabel();
 
   var runDistanceMeters = parseFloat(distanceInput.value) || 1600;
 
-  // Populate laps 1..20 (default 4)
   for (var i=1;i<=20;i++){
-    var opt=document.createElement('option');
-    opt.value=i;
-    opt.textContent=i;
-    if(i===4) opt.selected=true;
+    var opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = i;
+    if (i === 4) opt.selected = true;
     lapsSel.appendChild(opt);
   }
 
@@ -300,8 +293,7 @@ tr.done{ background:#e9f6ec }
       return;
     }
     var per = runDistanceMeters / laps;
-    var perStr = Number.isInteger(per) ? per.toString() : per.toFixed(1);
-    lapInfoEl.textContent = '≈ ' + perStr + ' m per lap';
+    lapInfoEl.textContent = '≈ ' + (Number.isInteger(per) ? per : per.toFixed(1)) + ' m per lap';
   }
 
   distanceInput.addEventListener('change', function(){
@@ -311,65 +303,69 @@ tr.done{ background:#e9f6ec }
       distanceInput.value = '1600';
     }
     runDistanceMeters = v;
-    setStatus('Run distance set to ' + runDistanceMeters + ' m.');
     updateLapInfo();
+    setStatus('Run distance set to ' + runDistanceMeters + ' m.');
   });
 
   lapsSel.addEventListener('change', updateLapInfo);
 
-  // TopCode -> Runner ID mapping (A)
   var TOPCODE_MAP = {
-    31:1,  47:2,  55:3,  59:4,  61:5,
-    79:6,  87:7,  91:8,  93:9,  103:10,
-    107:11,109:12,115:13,117:14,121:15,
-    143:16,151:17,155:18,157:19,167:20
+    31:1, 47:2, 55:3, 59:4, 61:5,
+    79:6, 87:7, 91:8, 93:9, 103:10,
+    107:11, 109:12, 115:13, 117:14, 121:15,
+    143:16, 151:17, 155:18, 157:19, 167:20
   };
+
   function mapCode(raw){
     return TOPCODE_MAP.hasOwnProperty(raw) ? TOPCODE_MAP[raw] : null;
   }
 
   function msToMMSS(ms){
-    var s = Math.floor(ms/1000);
-    var m = Math.floor(s/60);
-    var ss= s % 60;
-    return (m<10?'0':'')+m + ':' + (ss<10?'0':'')+ss;
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60);
+    var ss = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss;
   }
 
   function colorForRemaining(rem){
     if (rem === 20 || rem === 14 || rem === 9 || rem === 4) return '#40E0D0';
     if (rem === 19 || rem === 13 || rem === 8 || rem === 3) return '#4CAF50';
     if (rem === 18 || rem === 12 || rem === 7 || rem === 2) return '#9C27B0';
-    if (rem === 17)                                        return '#CDDC39';
-    if (rem === 16 || rem === 11 || rem === 6)             return '#2196F3';
-    if (rem === 15 || rem === 10 || rem === 5)             return '#FF9800';
-    if (rem === 1)                                         return '#F44336';
-    if (rem <= 0)                                          return '#9E9E9E';
+    if (rem === 17) return '#CDDC39';
+    if (rem === 16 || rem === 11 || rem === 6) return '#2196F3';
+    if (rem === 15 || rem === 10 || rem === 5) return '#FF9800';
+    if (rem === 1) return '#F44336';
+    if (rem <= 0) return '#9E9E9E';
     return '#EEEEEE';
   }
 
-  // ===== Timing & lap counting state =====
-  var counting   = false;
-  var startTime  = 0;
-  var timerTick  = null;
-  var lineY      = null;
-  var COOLDOWN   = 1200;
+  var counting  = false;
+  var startTime = 0;
+  var timerTick = null;
+  var lineY     = null;
+  var COOLDOWN  = 1200;
 
-  // runners[id] = { laps:[], lastTs, finished, totalLaps, lastSide }
-  var runners    = {};
+  var runners = {};
 
   function ensureRunner(id){
     var key = String(id);
     if (!runners[key]){
-      var total = parseInt(lapsSel.value,10);
-      runners[key] = { laps:[], lastTs:0, finished:false, totalLaps: total, lastSide: null };
+      var total = parseInt(lapsSel.value, 10);
+      runners[key] = {
+        laps: [],
+        lastTs: 0,
+        finished: false,
+        totalLaps: total,
+        lastSide: null
+      };
 
       var tr = document.createElement('tr');
-      tr.id = 'r-'+key;
+      tr.id = 'r-' + key;
       tr.innerHTML =
-        '<td>'+id+'</td>'+
-        '<td id="laps-'+key+'">'+total+'</td>'+
-        '<td id="fin-'+key+'">-</td>'+
-        '<td id="splits-'+key+'">-</td>';
+        '<td>' + id + '</td>' +
+        '<td id="laps-' + key + '">' + total + '</td>' +
+        '<td id="fin-' + key + '">-</td>' +
+        '<td id="splits-' + key + '">-</td>';
       tbody.appendChild(tr);
     }
   }
@@ -379,23 +375,22 @@ tr.done{ background:#e9f6ec }
     var r = runners[key];
     if (!r) return;
 
-    var lapsDone  = r.laps.length;
+    var lapsDone = r.laps.length;
     var remaining = r.totalLaps - lapsDone;
     if (remaining < 0) remaining = 0;
 
-    var lapsCell   = document.getElementById('laps-'+key);
-    var finCell    = document.getElementById('fin-'+key);
-    var splitsCell = document.getElementById('splits-'+key);
+    var lapsCell = document.getElementById('laps-' + key);
+    var finCell = document.getElementById('fin-' + key);
+    var splitsCell = document.getElementById('splits-' + key);
 
     if (lapsCell){
       lapsCell.textContent = remaining;
-      var c = colorForRemaining(remaining);
-      lapsCell.style.backgroundColor = c;
-      lapsCell.style.color = (remaining <= 1) ? '#fff' : '#000';
+      lapsCell.style.backgroundColor = colorForRemaining(remaining);
+      lapsCell.style.color = remaining <= 1 ? '#fff' : '#000';
     }
 
     if (finCell){
-      finCell.textContent = lapsDone ? msToMMSS(r.laps[lapsDone-1]) : '-';
+      finCell.textContent = lapsDone ? msToMMSS(r.laps[lapsDone - 1]) : '-';
       if (r.finished && remaining === 0) finCell.style.fontWeight = '700';
     }
 
@@ -410,7 +405,7 @@ tr.done{ background:#e9f6ec }
     }
 
     if (r.finished){
-      var row = document.getElementById('r-'+key);
+      var row = document.getElementById('r-' + key);
       if (row) row.classList.add('done');
     }
   }
@@ -426,21 +421,20 @@ tr.done{ background:#e9f6ec }
 
     r.laps.push(now - startTime);
     r.lastTs = now;
-
     if (r.laps.length >= r.totalLaps) r.finished = true;
 
     updateRunnerRow(id);
 
     var rem = r.totalLaps - r.laps.length;
     if (rem < 0) rem = 0;
-    setStatus('Runner '+id+' → laps left: '+rem+(r.finished ? ' (Finished)' : ''));
+    setStatus('Runner ' + id + ' → laps left: ' + rem + (r.finished ? ' (Finished)' : ''));
   }
 
   function startTimer(){
     startTime = Date.now();
     timerEl.textContent = '00:00';
     timerTick = setInterval(function(){
-      timerEl.textContent = msToMMSS(Date.now()-startTime);
+      timerEl.textContent = msToMMSS(Date.now() - startTime);
     }, 1000);
   }
 
@@ -451,41 +445,62 @@ tr.done{ background:#e9f6ec }
     }
   }
 
-  // Keep canvas width/height attributes aligned (TopCodes uses canvas attrs internally)
   function resizeCanvas(){
     var rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    // IMPORTANT: Use CSS pixel size here (NOT DPR) to avoid mismatch with TopCodes coordinates.
-    // DPR scaling can make detections "appear" off and sometimes break on mobile.
-    var targetW = Math.max(1, Math.round(rect.width));
-    var targetH = Math.max(1, Math.round(rect.height));
+    var targetW = Math.round(rect.width);
+    var targetH = Math.round(rect.height);
 
     if (canvas.width !== targetW || canvas.height !== targetH){
-      canvas.width  = targetW;
+      canvas.width = targetW;
       canvas.height = targetH;
       canvas.setAttribute('width', String(targetW));
       canvas.setAttribute('height', String(targetH));
     }
   }
 
-  // ===== Frame callback from TopCodes =====
+  function forceVideoNotMirrored(){
+    var v = document.getElementById('view-video');
+    if (!v) return;
+
+    // Rear camera should not be mirrored
+    if (facingMode === 'environment'){
+      v.style.transform = 'none';
+      v.style.webkitTransform = 'none';
+    } else {
+      // Keep front camera unmirrored too for consistency
+      v.style.transform = 'none';
+      v.style.webkitTransform = 'none';
+    }
+
+    v.playsInline = true;
+    v.muted = true;
+    try{
+      var p = v.play();
+      if (p && typeof p.catch === 'function') p.catch(function(){});
+    }catch(e){}
+  }
+
   function handleFrame(jsonString){
     var data;
-    try{ data = JSON.parse(jsonString); }catch(e){ return; }
+    try{
+      data = JSON.parse(jsonString);
+    }catch(e){
+      return;
+    }
 
     var tcodes = data.topcodes || [];
-    var w = canvas.width  || 640;
+    var w = canvas.width || 640;
     var h = canvas.height || 480;
 
     lineY = Math.round(h * 0.5);
     var deadband = Math.max(16, Math.round(h * 0.10));
 
-    // Red line overlay
     ctx.save();
     var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
     ctx.strokeStyle = (lineColor || 'red').trim();
-    ctx.lineWidth   = Math.max(3, h/220);
+    ctx.lineWidth = Math.max(3, h / 220);
     ctx.beginPath();
     ctx.moveTo(0, lineY);
     ctx.lineTo(w, lineY);
@@ -505,23 +520,20 @@ tr.done{ background:#e9f6ec }
       if (!r || r.finished) continue;
 
       var cy = tc.y;
-
       var dy = cy - lineY;
       var side = 0;
-      if (dy < -deadband) side = -1;
-      else if (dy > deadband) side = +1;
 
-      if (r.lastSide === -1 && side === +1){
+      if (dy < -deadband) side = -1;
+      else if (dy > deadband) side = 1;
+
+      if (r.lastSide === -1 && side === 1){
         countLap(runnerID);
       }
+
       if (side !== 0) r.lastSide = side;
     }
   }
 
-  // ===== THE IMPORTANT FIX =====
-  // Do NOT getUserMedia ourselves.
-  // Let TopCodes do it (so detection works), but inject facingMode into constraints
-  // by temporarily wrapping navigator.mediaDevices.getUserMedia ONLY during start.
   function startTopCodesWithFacingMode(canvasId){
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
       setStatus('Error: Camera API not supported. Use HTTPS or localhost.');
@@ -536,107 +548,91 @@ tr.done{ background:#e9f6ec }
     var originalGUM = md.getUserMedia.bind(md);
 
     md.getUserMedia = function(constraints){
-      try{
-        constraints = constraints || {};
-        var v = constraints.video;
+      constraints = constraints || {};
+      var v = constraints.video;
 
-        // TopCodes often passes: { video: { width:{...}, height:{...} }, audio:false }
-        // We keep what TopCodes sets, and add facingMode in a safe way.
-        if (v === true) v = {};
-        if (!v) v = {};
-        if (typeof v !== 'object') v = {};
+      if (v === true) v = {};
+      if (!v) v = {};
+      if (typeof v !== 'object') v = {};
 
-        // Preserve existing constraints and add facingMode
-        v.facingMode = { ideal: facingMode };
+      v.facingMode = { ideal: facingMode };
+      constraints.video = v;
+      constraints.audio = false;
 
-        constraints.video = v;
-        constraints.audio = false;
-      }catch(e){}
       return originalGUM(constraints);
     };
 
     try{
-      // This toggles: if off -> on
       TopCodes.startStopVideoScan(canvasId);
-      scanningActive = true;
-
-      // Ensure callback is set
-      try{ TopCodes.setVideoFrameCallback(canvasId, handleFrame); }catch(e2){}
-    }catch(e3){
-      console.error(e3);
-      setStatus('Failed to start TopCodes scan: ' + (e3.message || e3));
-      scanningActive = false;
-      // restore
+      scanningStarted = true;
+      try{
+        TopCodes.setVideoFrameCallback(canvasId, handleFrame);
+      }catch(e){}
+    }catch(err){
+      console.error(err);
+      scanningStarted = false;
       md.getUserMedia = originalGUM;
+      setStatus('Failed to start camera: ' + (err.message || err));
       return false;
-    } finally {
-      // Restore immediately so we don't break other camera calls
-      md.getUserMedia = originalGUM;
     }
 
-    // Force video element un-mirrored (some browsers default mirror)
-    setTimeout(function(){
-      var v = document.getElementById(canvasId + '-video');
-      if (v){
-        v.style.transform = 'none';
-        v.style.webkitTransform = 'none';
-        v.playsInline = true;
-        v.muted = true;
-        var p = v.play();
-        if (p && typeof p.catch === 'function') p.catch(function(){});
-      }
-    }, 120);
-
+    md.getUserMedia = originalGUM;
     return true;
   }
 
   function stopTopCodes(canvasId){
-    if (!window.TopCodes || !TopCodes.startStopVideoScan) return;
-    if (!scanningActive) return;
+    if (!scanningStarted) return;
     try{
-      TopCodes.startStopVideoScan(canvasId); // toggles off
+      TopCodes.startStopVideoScan(canvasId);
     }catch(e){}
-    scanningActive = false;
+    scanningStarted = false;
   }
 
   function startCamera(){
-    if (cameraActive || starting) return;
-    starting = true;
+    if (cameraActive || startingCamera) return;
+    startingCamera = true;
 
     resizeCanvas();
-
     enableBtn.disabled = true;
     setStatus('Starting camera…');
 
     var ok = startTopCodesWithFacingMode('view');
     if (!ok){
       enableBtn.disabled = false;
-      starting = false;
+      startingCamera = false;
       return;
     }
 
-    // Give TopCodes a moment to initialize the video + begin decoding.
-    setTimeout(function(){
-      cameraActive = true;
-      starting = false;
+    var tries = 0;
+    var maxTries = 20;
+    var wait = setInterval(function(){
+      tries++;
+      forceVideoNotMirrored();
 
-      enableBtn.disabled  = true;
-      disableBtn.disabled = false;
-      swapBtn.disabled    = false;
-      startBtn.disabled   = false;
-      stopBtn.disabled    = true;
-      exportBtn.disabled  = true;
-      summaryBtn.disabled = true;
+      var v = document.getElementById('view-video');
+      if (v || tries >= maxTries){
+        clearInterval(wait);
 
-      setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') +
-        '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
-    }, 250);
+        cameraActive = true;
+        startingCamera = false;
+
+        enableBtn.disabled  = true;
+        disableBtn.disabled = false;
+        swapBtn.disabled    = false;
+        startBtn.disabled   = false;
+        stopBtn.disabled    = true;
+        exportBtn.disabled  = true;
+        summaryBtn.disabled = true;
+
+        setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') + '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+      }
+    }, 150);
   }
 
   function stopCamera(){
     stopTopCodes('view');
     cameraActive = false;
-    starting = false;
+    startingCamera = false;
 
     enableBtn.disabled  = false;
     disableBtn.disabled = true;
@@ -652,13 +648,13 @@ tr.done{ background:#e9f6ec }
     startCamera();
   }
 
-  // ===== Buttons =====
   enableBtn.addEventListener('click', function(){
-    if (cameraActive) { setStatus('Camera already active.'); return; }
     startCamera();
   });
 
-  disableBtn.addEventListener('click', stopCamera);
+  disableBtn.addEventListener('click', function(){
+    stopCamera();
+  });
 
   swapBtn.addEventListener('click', function(){
     facingMode = (facingMode === 'environment') ? 'user' : 'environment';
@@ -681,16 +677,17 @@ tr.done{ background:#e9f6ec }
     counting = true;
     startTimer();
 
-    startBtn.disabled  = true;
-    stopBtn.disabled   = false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
     exportBtn.disabled = true;
-    summaryBtn.disabled= true;
+    summaryBtn.disabled = true;
 
     setStatus('Counting… TopCodes must CROSS the line (above → below) to reduce laps left.');
   });
 
   stopBtn.addEventListener('click', function(){
     if (!counting) return;
+
     counting = false;
     stopTimer();
 
@@ -701,23 +698,26 @@ tr.done{ background:#e9f6ec }
       if (runners.hasOwnProperty(id)){
         var r = runners[id];
         if (!r.finished){
-          var finCell = document.getElementById('fin-'+id);
+          var finCell = document.getElementById('fin-' + id);
           if (finCell) finCell.textContent = 'DNF';
         }
       }
     }
 
-    startBtn.disabled  = false;
-    stopBtn.disabled   = true;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
     exportBtn.disabled = Object.keys(runners).length === 0;
-    summaryBtn.disabled= Object.keys(runners).length === 0;
+    summaryBtn.disabled = Object.keys(runners).length === 0;
 
     setStatus('Stopped. You can export CSV or view Detailed Summary now.');
   });
 
   exportBtn.addEventListener('click', function(){
     var ids = Object.keys(runners).sort(function(a,b){ return Number(a)-Number(b); });
-    if (!ids.length){ setStatus('No data to export.'); return; }
+    if (!ids.length){
+      setStatus('No data to export.');
+      return;
+    }
 
     var maxLaps = 0;
     for (var idx=0; idx<ids.length; idx++){
@@ -727,7 +727,7 @@ tr.done{ background:#e9f6ec }
 
     var rows = [];
     var header = ['Runner ID','Total Laps','Run Distance (m)','Total Distance (m)','Finish','Pace (min/km)'];
-    for (var j=1;j<=maxLaps;j++) header.push('Lap '+j+' (mm:ss)');
+    for (var j=1;j<=maxLaps;j++) header.push('Lap ' + j + ' (mm:ss)');
     rows.push(header);
 
     var totalRunMeters = runDistanceMeters;
@@ -735,23 +735,23 @@ tr.done{ background:#e9f6ec }
     for (idx=0; idx<ids.length; idx++){
       var rid = ids[idx];
       var r = runners[rid];
-      var total  = r.totalLaps;
+      var total = r.totalLaps;
       var lapsDone = r.laps.length;
-      var finishMs = lapsDone ? r.laps[lapsDone-1] : NaN;
+      var finishMs = lapsDone ? r.laps[lapsDone - 1] : NaN;
       var finishStr = lapsDone ? msToMMSS(finishMs) : 'DNF';
 
       var totalDist = totalRunMeters;
       var paceStrVal = '';
       if (lapsDone){
-        var totalSec = finishMs/1000;
-        var paceSecPerKm = totalSec / (totalDist/1000);
+        var totalSec = finishMs / 1000;
+        var paceSecPerKm = totalSec / (totalDist / 1000);
         var paceMin = Math.floor(paceSecPerKm / 60);
         var paceSec = Math.round(paceSecPerKm % 60);
-        paceStrVal = paceMin + ':' + (paceSec<10?'0':'') + paceSec;
+        paceStrVal = paceMin + ':' + (paceSec < 10 ? '0' : '') + paceSec;
       }
 
       var row = [rid, String(total), String(totalRunMeters), String(totalDist), finishStr, paceStrVal];
-      for (j=0;j<maxLaps;j++){
+      for (j=0; j<maxLaps; j++){
         row.push(r.laps[j] != null ? msToMMSS(r.laps[j]) : '');
       }
       rows.push(row);
@@ -772,7 +772,7 @@ tr.done{ background:#e9f6ec }
     var encoded = encodeURIComponent(csv);
     var a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encoded;
-    a.download  = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    a.download = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -787,7 +787,7 @@ tr.done{ background:#e9f6ec }
     var runnersArr = [];
     for (var k=0;k<ids.length;k++){
       var id = ids[k];
-      var r  = runners[id];
+      var r = runners[id];
       runnersArr.push({
         id: id,
         totalLaps: r.totalLaps,
@@ -799,14 +799,17 @@ tr.done{ background:#e9f6ec }
     return {
       createdAt: new Date().toISOString(),
       runDistanceMeters: runDistanceMeters,
-      lapsConfig: parseInt(lapsSel.value,10),
+      lapsConfig: parseInt(lapsSel.value, 10),
       runners: runnersArr
     };
   }
 
   summaryBtn.addEventListener('click', function(){
     var data = buildSummaryData();
-    if (!data){ setStatus('No data available for summary.'); return; }
+    if (!data){
+      setStatus('No data available for summary.');
+      return;
+    }
     try{
       localStorage.setItem('topcodesLapSummaryV1', JSON.stringify(data));
       window.open('detailedsummary.html', '_blank');
@@ -818,15 +821,12 @@ tr.done{ background:#e9f6ec }
 
   window.addEventListener('resize', function(){
     resizeCanvas();
-    // Don’t auto-restart camera; it often causes more issues on mobile.
-    // If view looks off after rotate, disable + enable camera once.
   });
 
   window.addEventListener('beforeunload', function(){
     stopCamera();
   });
 
-  // Initial setup
   resizeCanvas();
   updateLapInfo();
   setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR/barcodes). Note: Camera requires HTTPS or localhost.');
