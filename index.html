@@ -341,7 +341,7 @@ tr.done{ background:#e9f6ec }
   var timerTick = null;
   var zoneTop   = null;
   var zoneBottom = null;
-  var COOLDOWN  = 1200;
+ var COOLDOWN  = 30000; // 30 seconds lockout after each successful scan
 
   var runners = {};
 
@@ -425,7 +425,10 @@ tr.done{ background:#e9f6ec }
 
     var rem = r.totalLaps - r.laps.length;
     if (rem < 0) rem = 0;
-    setStatus('Runner ' + id + ' → laps left: ' + rem + (r.finished ? ' (Finished)' : ''));
+setStatus(
+  'Runner ' + id + ' → laps left: ' + rem +
+  (r.finished ? ' (Finished)' : ' | Next scan allowed after 30 seconds')
+);
   }
 
   function startTimer(){
