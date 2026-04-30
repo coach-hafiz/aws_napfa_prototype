@@ -801,7 +801,7 @@ footer{
 
     const avgSplits=[0,1,2,3,4,5].map(i=>mean(finishers.map(s=>timeToSec(s.splits[i]))));
     graph(selectedGraph,[{splits:avgSplits.map(secToTime),color:'var(--accent)',width:4,opacity:1}]);
-    selectedGraphFooter.innerHTML='<span>Class average split by lap</span><span>Rising line = slower lap</span>';
+    selectedGraphFooter.innerHTML='<span>Class average split by lap</span><span>Declining line = slower lap</span>';
 
     const colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
     graph(allGraph,students.map(s=>({splits:s.splits,color:colors[s.band],width:2,opacity:s.band==='DNF'?0.22:0.42})));
