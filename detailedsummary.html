@@ -3,990 +3,457 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Run Feedback — Learner Page</title>
+<title>Run Feedback — Detailed Summary</title>
 <style>
 :root{
-  --accent:#015871;
-  --bg:#f6f7f9;
-  --card:#ffffff;
-  --muted:#64748b;
-  --line:#e5e7eb;
-  --good:#16a34a;
-  --warn:#f59e0b;
-  --bad:#ef4444;
-  --blue:#2563eb;
-  --purple:#7c3aed;
+  --accent:#015871; --bg:#f6f7f9; --card:#fff; --muted:#64748b; --line:#e5e7eb;
+  --good:#16a34a; --warn:#f59e0b; --bad:#ef4444; --blue:#2563eb; --grey:#94a3b8;
   --shadow:0 10px 22px rgba(0,0,0,.08);
 }
-*{ box-sizing:border-box; }
-body{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  background:var(--bg);
-  color:#0f172a;
-}
-header{
-  position:sticky;
-  top:0;
-  z-index:10;
-  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.92));
-  border-bottom:1px solid var(--line);
-  backdrop-filter:blur(8px);
-}
-.headerInner{
-  max-width:1100px;
-  margin:0 auto;
-  padding:12px 14px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-.brand{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  min-width:220px;
-}
-.badge{
-  width:40px;height:40px;
-  border-radius:12px;
-  background:var(--accent);
-  color:#fff;
-  display:grid;
-  place-items:center;
-  font-weight:900;
-}
-h1{
-  font-size:16px;
-  margin:0;
-  line-height:1.1;
-}
-.sub{
-  font-size:12px;
-  color:var(--muted);
-  margin:0;
-}
-.controls{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex:1 1 auto;
-  justify-content:flex-end;
-  flex-wrap:wrap;
-}
-select, button{
-  height:40px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#fff;
-  padding:0 12px;
-  font-weight:800;
-}
-button{
-  cursor:pointer;
-  border:0;
-  background:var(--accent);
-  color:#fff;
-}
-button.secondary{
-  background:#6b7280;
-}
-
-main{
-  max-width:1100px;
-  margin:0 auto;
-  padding:14px;
-  display:grid;
-  grid-template-columns:1.18fr .82fr;
-  gap:14px;
-}
-@media (max-width:980px){
-  main{ grid-template-columns:1fr; }
-  .controls{ justify-content:flex-start; }
-  .brand{ min-width:unset; }
-}
-
-.card{
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:18px;
-  box-shadow:var(--shadow);
-  overflow:hidden;
-}
-.cardHeader{
-  padding:12px 14px;
-  border-bottom:1px solid var(--line);
-  display:flex;
-  justify-content:space-between;
-  gap:10px;
-  align-items:flex-start;
-}
-.cardTitle{
-  margin:0;
-  font-size:14px;
-}
-.cardHint{
-  margin:2px 0 0 0;
-  font-size:12px;
-  color:var(--muted);
-}
-.cardBody{ padding:12px 14px; }
-
-.grid2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-@media (max-width:620px){
-  .grid2{ grid-template-columns:1fr; }
-}
-
-.bigNumber{
-  font-size:30px;
-  font-weight:950;
-  letter-spacing:-0.02em;
-  margin:0;
-}
-.smallLabel{
-  margin:0;
-  color:var(--muted);
-  font-size:12px;
-  font-weight:800;
-}
-.small{
-  font-size:12px;
-  color:var(--muted);
-}
-
-.tile{
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:10px;
-  background:#fff;
-}
-.tile .icon{
-  width:44px;height:44px;
-  border-radius:16px;
-  display:grid;
-  place-items:center;
-  font-weight:950;
-  color:#fff;
-  background:var(--accent);
-  margin-bottom:8px;
-  font-size:18px;
-}
-.tile b{
-  display:block;
-  font-size:13px;
-  margin-bottom:4px;
-}
-.tile span{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-}
-
-.pillRow{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:8px;
-}
-.pill{
-  font-size:12px;
-  font-weight:900;
-  padding:6px 10px;
-  border-radius:999px;
-  border:1px solid var(--line);
-  background:#fff;
-}
-.pill.good{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.10); color:#0f5f2c; }
-.pill.warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12); color:#7a4b00; }
-.pill.bad{ border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.12); color:#7a0c0c; }
-.pill.blue{ border-color:rgba(37,99,235,.35); background:rgba(37,99,235,.10); color:#133f94; }
-
-.bar{
-  height:10px;
-  background:#eef2f7;
-  border-radius:999px;
-  overflow:hidden;
-  border:1px solid rgba(0,0,0,.04);
-}
-.bar > div{
-  height:100%;
-  width:0%;
-  background:var(--accent);
-  border-radius:999px;
-}
-
-.sparkWrap{
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px;
-  background:#fff;
-}
-.sparkTitle{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:10px;
-  margin-bottom:6px;
-}
-.sparkTitle b{ font-size:13px; }
-.sparkTitle span{ font-size:12px; color:var(--muted); }
-
-.hr{ height:1px; background:var(--line); margin:12px 0; }
-
-.iconRow{
-  display:grid;
-  grid-template-columns:repeat(4, 1fr);
-  gap:10px;
-}
-@media (max-width:620px){
-  .iconRow{ grid-template-columns:repeat(2, 1fr); }
-}
-
-.q{
-  display:grid;
-  gap:10px;
-}
-.q .item{
-  border:1px solid var(--line);
-  border-radius:16px;
-  padding:10px 12px;
-  background:#fff;
-}
-.q .item b{
-  display:block;
-  font-size:13px;
-  margin-bottom:4px;
-}
-.q .item span{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-}
-
-.checklist{
-  display:grid;
-  gap:8px;
-}
-.check{
-  display:flex;
-  gap:8px;
-  align-items:flex-start;
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px;
-  background:#fff;
-}
-.check .dot{
-  width:24px;height:24px;
-  border-radius:999px;
-  background:var(--accent);
-  color:#fff;
-  display:grid;
-  place-items:center;
-  font-weight:900;
-  flex:0 0 auto;
-  font-size:13px;
-}
-.check b{
-  display:block;
-  font-size:13px;
-  margin-bottom:2px;
-}
-.check span{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-}
-
-.tableWrap{
-  max-height:320px;
-  overflow:auto;
-  border-radius:12px;
-}
-table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:13px;
-}
-th,td{
-  padding:10px 8px;
-  border-bottom:1px solid #f1f5f9;
-  text-align:center;
-}
-th{
-  color:#fff;
-  background:var(--accent);
-  position:sticky;
-  top:0;
-}
-tbody tr:nth-child(even){ background:#fafafa; }
-tbody tr.me{ outline:2px solid rgba(1,88,113,.22); outline-offset:-2px; background:rgba(1,88,113,.06); }
-
-.notice{
-  max-width:900px;
-  margin:16px auto;
-  padding:14px;
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:16px;
-  box-shadow:var(--shadow);
-}
-footer{
-  max-width:1100px;
-  margin:0 auto;
-  padding:10px 14px 24px 14px;
-  color:var(--muted);
-  font-size:12px;
-}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#0f172a}
+header{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line)}
+.headerInner{max-width:1280px;margin:0 auto;padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.badge{width:42px;height:42px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:900}
+.brand{display:flex;gap:10px;align-items:center;min-width:260px}
+h1{font-size:16px;margin:0}.sub{font-size:12px;color:var(--muted);margin:0}
+.controls{display:flex;gap:10px;align-items:center;flex:1;justify-content:flex-end;flex-wrap:wrap}
+select,button{height:40px;border-radius:12px;border:1px solid var(--line);padding:0 12px;font-weight:800}
+button{border:0;background:var(--accent);color:#fff;cursor:pointer}button.secondary{background:#6b7280}
+main{max-width:1280px;margin:0 auto;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1100px){main{grid-template-columns:1fr}.controls{justify-content:flex-start}}
+.col{display:grid;gap:14px;align-content:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.cardHeader{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.cardTitle{margin:0;font-size:14px;font-weight:900}.cardHint{margin:2px 0 0 0;font-size:12px;color:var(--muted)}
+.cardBody{padding:12px 14px}
+.sectionTitle{font-size:12px;font-weight:900;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;margin:0 0 10px 0}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:800px){.grid4,.grid3{grid-template-columns:1fr}}
+.tile{border:1px solid var(--line);border-radius:16px;padding:10px;background:#fff}
+.tile b{display:block;font-size:13px;margin-bottom:4px}.tile span{display:block;font-size:12px;color:var(--muted)}
+.bigNumber{font-size:28px;font-weight:950;margin:0}.mediumNumber{font-size:22px;font-weight:900;margin:0}
+.hr{height:1px;background:var(--line);margin:12px 0}
+.pill{display:inline-block;font-size:12px;font-weight:900;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff}
+.pill.good{background:rgba(22,163,74,.10);color:#0f5f2c}.pill.warn{background:rgba(245,158,11,.12);color:#7a4b00}
+.pill.bad{background:rgba(239,68,68,.12);color:#7a0c0c}.pill.blue{background:rgba(37,99,235,.10);color:#133f94}
+.pill.grey{background:rgba(148,163,184,.12);color:#475569}
+.legend{display:flex;flex-wrap:wrap;gap:8px}.legend span{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff}
+.checklist{display:grid;gap:8px}.check{display:flex;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+.dot{width:24px;height:24px;border-radius:999px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:900;flex:0 0 auto}
+.check b{display:block;font-size:13px;margin-bottom:2px}.check span{display:block;font-size:12px;color:var(--muted)}
+.graphBox{border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px;overflow:auto}
+.scaleLabel{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+.tableWrap{max-height:560px;overflow:auto;border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:10px 8px;border-bottom:1px solid #f1f5f9;text-align:center}
+th{background:var(--accent);color:#fff;position:sticky;top:0}tbody tr:nth-child(even){background:#fafafa}
+tbody tr.selected{outline:2px solid rgba(1,88,113,.25);outline-offset:-2px;background:rgba(1,88,113,.06)}
+.bandA{background:rgba(22,163,74,.10)}.bandB{background:rgba(37,99,235,.08)}.bandC{background:rgba(245,158,11,.10)}
+.bandD{background:rgba(239,68,68,.10)}.bandDNF{background:rgba(148,163,184,.12)}
+.notice{max-width:900px;margin:16px auto;padding:14px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+footer{max-width:1280px;margin:0 auto;padding:10px 14px 24px;font-size:12px;color:var(--muted)}
 </style>
 </head>
-<body>
 
+<body>
 <header>
   <div class="headerInner">
     <div class="brand">
-      <div class="badge">R</div>
+      <div class="badge">F</div>
       <div>
-        <h1>Your Run Feedback</h1>
+        <h1>Run Feedback Summary</h1>
         <p class="sub" id="metaLine">Loading…</p>
       </div>
     </div>
-
     <div class="controls">
-      <label class="small" for="runnerSel" style="font-weight:900;color:#0f172a;">View</label>
-      <select id="runnerSel" aria-label="Select runner"></select>
-      <button id="shareBtn" class="secondary" type="button">Copy Link</button>
-      <button id="clearBtn" type="button">Clear Data</button>
+      <label for="viewSel" style="font-size:12px;font-weight:900">View</label>
+      <select id="viewSel"></select>
+      <button class="secondary" id="shareBtn">Copy Link</button>
+      <button id="clearBtn">Clear Data</button>
     </div>
   </div>
 </header>
 
 <div id="noData" class="notice" style="display:none;">
   <b>No run data found.</b>
-  <div class="small" style="margin-top:6px;">
+  <div style="font-size:12px;color:#64748b;margin-top:6px;">
     Go back to the lap counter page, press <b>Stop</b>, then <b>Detailed Summary</b>.
   </div>
 </div>
 
 <main id="app" style="display:none;">
-  <!-- LEFT -->
-  <section class="card">
-    <div class="cardHeader">
-      <div>
-        <p class="cardTitle" id="runnerTitle">Runner</p>
-        <p class="cardHint">A simple learner page: rhythm, effort, feelings, and support.</p>
-      </div>
-      <div class="pill" id="finishPill">—</div>
-    </div>
-
-    <div class="cardBody">
-      <!-- STP: Checking for Understanding and Providing Feedback -->
-      <div class="grid2">
-        <div class="tile">
-          <div class="icon" style="background:var(--good);">⏱</div>
-          <b>My run</b>
-          <p class="bigNumber" id="finishTime" style="margin:6px 0 0 0;">—</p>
-          <div class="pillRow" id="finishPills"></div>
+  <div class="col">
+    <section class="card">
+      <div class="cardHeader">
+        <div>
+          <p class="cardTitle" id="mainTitle">Whole-Class Feedback</p>
+          <p class="cardHint" id="mainHint">Simple feedback based on finish time and lap splits.</p>
         </div>
-
-        <div class="tile">
-          <div class="icon" style="background:var(--blue);">〰</div>
-          <b>My rhythm</b>
-          <p class="bigNumber" id="rhythmScore" style="margin:6px 0 0 0;">—</p>
-          <div class="bar"><div id="rhythmBar"></div></div>
-          <div class="small" id="rhythmNote" style="margin-top:6px;">—</div>
-        </div>
+        <div class="pill blue" id="modePill">Class</div>
       </div>
 
-      <div class="hr"></div>
-
-      <!-- STP: Using Questions to Deepen Learning -->
-      <div class="sparkWrap">
-        <div class="sparkTitle">
-          <b>Lap trend</b>
-          <span id="trendHint">—</span>
+      <div class="cardBody">
+        <div class="sectionTitle">Overview</div>
+        <div class="grid4">
+          <div class="tile"><b>Completion</b><p class="bigNumber" id="overview1">—</p><span id="overview1Text">—</span></div>
+          <div class="tile"><b>Pacing pattern</b><p class="bigNumber" id="overview2">—</p><span id="overview2Text">—</span></div>
+          <div class="tile"><b>Start control</b><p class="bigNumber" id="overview3">—</p><span id="overview3Text">—</span></div>
+          <div class="tile"><b>Finish pattern</b><p class="bigNumber" id="overview4">—</p><span id="overview4Text">—</span></div>
         </div>
-        <svg id="spark" width="100%" height="78" viewBox="0 0 600 78" role="img" aria-label="Lap trend sparkline">
-          <rect x="0" y="0" width="600" height="78" fill="rgba(1,88,113,.04)"></rect>
-          <path id="sparkPath" d="" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"></path>
-          <circle id="sparkDot" cx="0" cy="0" r="4" fill="var(--accent)"></circle>
-        </svg>
-        <div class="small" id="lapList" style="margin-top:8px;">—</div>
-      </div>
 
-      <div class="hr"></div>
+        <div class="hr"></div>
+        <div class="sectionTitle">Key Takeaway</div>
+        <div class="tile"><b>Main point</b><span id="mainTakeaway">—</span></div>
 
-      <!-- STP: Setting Expectations and Routines -->
-      <div class="tile" style="background:rgba(1,88,113,.05);">
-        <b>What good pace running looks like</b>
-        <div class="pillRow" style="margin-top:8px;">
-          <span class="pill blue">Find your rhythm</span>
-          <span class="pill blue">Notice your breathing</span>
-          <span class="pill blue">Encourage your partner</span>
-          <span class="pill blue">Finish with control</span>
-        </div>
-      </div>
+        <div class="hr"></div>
+        <div class="sectionTitle">Feedback</div>
+        <div class="checklist" id="feedbackBox"></div>
 
-      <div class="hr"></div>
+        <div class="hr"></div>
+        <div class="sectionTitle">Questions to Check Understanding</div>
+        <div class="checklist" id="questionsBox"></div>
 
-      <!-- STP: Empowering Learners / Encouraging Engagement -->
-      <div class="iconRow">
-        <div class="tile">
-          <div class="icon" style="background:var(--good);">☺</div>
-          <b>Feelings</b>
-          <span>Success is not only time. Notice calm, effort, and confidence.</span>
-        </div>
-        <div class="tile">
-          <div class="icon" style="background:var(--blue);">🤝</div>
-          <b>Partner support</b>
-          <span>Notice effort. Encourage, don’t compare.</span>
-        </div>
-        <div class="tile">
-          <div class="icon" style="background:var(--purple);">🧠</div>
-          <b>Self-discovery</b>
-          <span>Spot rhythm, flow, fatigue, and body signals.</span>
-        </div>
-        <div class="tile">
-          <div class="icon" style="background:var(--warn);">💬</div>
-          <b>Better feedback</b>
-          <span>Try kind, helpful words with your partner.</span>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <!-- STP: Facilitating Collaborative Learning -->
-      <div class="checklist">
-        <div class="check">
-          <div class="dot">1</div>
-          <div>
-            <b>Instead of only saying “too slow / too fast”...</b>
-            <span>Try: “I found a rhythm.” “I felt more relaxed.” “I noticed you kept trying.”</span>
+        <div class="hr"></div>
+        <div class="sectionTitle">Selected Lap Trend</div>
+        <div class="graphBox">
+          <svg id="selectedGraph" width="100%" height="230" viewBox="0 0 760 230"></svg>
+          <div class="scaleLabel" id="selectedGraphFooter">
+            <span>Y-axis: lap split time</span>
+            <span>Higher line = slower lap, lower line = faster lap</span>
           </div>
         </div>
-        <div class="check">
-          <div class="dot">2</div>
-          <div>
-            <b>Running with others helps learning</b>
-            <span>Your partner can be a mirror. You learn about yourself by observing and supporting each other.</span>
-          </div>
-        </div>
-        <div class="check">
-          <div class="dot">3</div>
-          <div>
-            <b>Cooperation beats competition</b>
-            <span>Try: “You can do it!” “Let’s match our rhythm!”</span>
+
+        <div class="hr"></div>
+        <div class="sectionTitle">All Runners’ Split Times</div>
+        <div class="graphBox">
+          <svg id="allGraph" width="100%" height="300" viewBox="0 0 760 300"></svg>
+          <div class="scaleLabel">
+            <span>Each line = one runner</span>
+            <span>Higher line = slower lap, lower line = faster lap</span>
           </div>
         </div>
       </div>
+    </section>
+  </div>
 
-      <div class="hr"></div>
-
-      <!-- STP: Supporting Self-Directed Learning / Using Questions -->
-      <div class="q">
-        <div class="item">
-          <b>1) What did you notice about your rhythm?</b>
-          <span>Did it feel smooth, steady, rushed, or tiring?</span>
+  <div class="col">
+    <section class="card">
+      <div class="cardHeader">
+        <div>
+          <p class="cardTitle">Individual Student Feedback</p>
+          <p class="cardHint">Select a student to see feedback and reflection questions.</p>
         </div>
-        <div class="item">
-          <b>2) What did your body tell you?</b>
-          <span>Think about breathing, steps, flow, and fatigue.</span>
-        </div>
-        <div class="item">
-          <b>3) What did you notice about your partner?</b>
-          <span>What effort, challenge, or improvement did you see?</span>
-        </div>
-        <div class="item">
-          <b>4) What encouragement can you give?</b>
-          <span>Say something supportive, specific, and kind.</span>
-        </div>
-        <div class="item">
-          <b>5) Pick one next-step goal</b>
-          <span>Smoother rhythm • calmer breathing • steadier pace • support a partner better</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- RIGHT -->
-  <aside class="card">
-    <div class="cardHeader">
-      <div>
-        <p class="cardTitle">Group snapshot</p>
-        <p class="cardHint">PE is not only physical training. It is also social learning.</p>
-      </div>
-    </div>
-
-    <div class="cardBody">
-      <div class="grid2">
-        <div class="tile">
-          <div class="icon" style="background:var(--accent);">✓</div>
-          <b>Completion</b>
-          <p class="bigNumber" id="completionPct" style="margin:6px 0 0 0;">—</p>
-          <div class="bar"><div id="completionBar"></div></div>
-          <div class="small" id="completionNote" style="margin-top:6px;">—</div>
-        </div>
-
-        <div class="tile">
-          <div class="icon" style="background:var(--blue);">🌱</div>
-          <b>Big idea</b>
-          <span>From only “run fast” → to rhythm, effort, feelings, and mutual support.</span>
-        </div>
+        <div class="pill grey" id="studentBandPill">Select</div>
       </div>
 
-      <div class="hr"></div>
-
-      <div class="tile" style="background:rgba(22,163,74,.10);">
-        <b>What students can grow in</b>
-        <div class="pillRow" style="margin-top:8px;">
-          <span class="pill good">Self-awareness</span>
-          <span class="pill good">Empathy</span>
-          <span class="pill good">Motivation</span>
-          <span class="pill good">Confidence</span>
+      <div class="cardBody">
+        <div class="sectionTitle">Selected Student</div>
+        <div class="grid3">
+          <div class="tile"><b>Student</b><p class="mediumNumber" id="studentNo">—</p><span id="studentFinish">Finish: —</span></div>
+          <div class="tile"><b>Pacing style</b><p class="mediumNumber" id="strategyType">—</p><span id="strategyHint">—</span></div>
+          <div class="tile"><b>Split changes</b><p class="mediumNumber" id="splitVar">—</p><span id="splitVarHint">—</span></div>
         </div>
-      </div>
 
-      <div class="hr"></div>
+        <div class="hr"></div>
+        <div class="sectionTitle">Student Reflection Questions</div>
+        <div class="checklist" id="reflectionBox"></div>
 
-      <div class="tile" style="background:rgba(245,158,11,.10);">
-        <b>Quick pair challenge</b>
-        <span>For 1 lap, match your rhythm with a partner and encourage each other.</span>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="sparkWrap">
-        <div class="sparkTitle">
-          <b>Leaderboard</b>
-          <span class="small">Finish time + rhythm</span>
+        <div class="hr"></div>
+        <div class="sectionTitle">Leaderboard</div>
+        <div class="legend">
+          <span class="bandA">A: Very consistent pacing</span>
+          <span class="bandB">B: Mostly consistent pacing</span>
+          <span class="bandC">C: Some pacing changes</span>
+          <span class="bandD">D: Large pacing changes</span>
+          <span class="bandDNF">DNF: Did not finish</span>
         </div>
-        <div class="tableWrap">
-          <table aria-label="Leaderboard">
+
+        <div class="tableWrap" style="margin-top:10px">
+          <table>
             <thead>
-              <tr>
-                <th>Runner</th>
-                <th>Finish</th>
-                <th>Rhythm</th>
-              </tr>
+              <tr><th>Position</th><th>Runner #</th><th>Finish Time</th><th>Pacing Band</th></tr>
             </thead>
             <tbody id="leaderBody"></tbody>
           </table>
         </div>
       </div>
-
-      <div class="hr"></div>
-
-      <div class="tile" style="background:rgba(1,88,113,.05);">
-        <b>Very short takeaway</b>
-        <span>
-          Pace running becomes more meaningful when learners reflect, support one another, and understand their own rhythm and effort.
-        </span>
-      </div>
-    </div>
-  </aside>
+    </section>
+  </div>
 </main>
 
 <footer>
-  Learner reminder: success is not only about speed. It is also about rhythm, effort, feelings, and how you support others.
+  This page uses pace and lap splits only. It does not assume heart rate, motivation, or effort unless students answer the reflection questions.
 </footer>
 
 <script>
 (function(){
-  var STORE_KEY = 'topcodesLapSummaryV1';
+var STORE_KEY='topcodesLapSummaryV1';
+var els={};
+['metaLine','noData','app','viewSel','mainTitle','mainHint','modePill','overview1','overview1Text','overview2','overview2Text','overview3','overview3Text','overview4','overview4Text','mainTakeaway','feedbackBox','questionsBox','selectedGraph','selectedGraphFooter','allGraph','studentBandPill','studentNo','studentFinish','strategyType','strategyHint','splitVar','splitVarHint','reflectionBox','leaderBody','shareBtn','clearBtn'].forEach(function(id){els[id]=document.getElementById(id);});
 
-  var metaLine = document.getElementById('metaLine');
-  var noData = document.getElementById('noData');
-  var app = document.getElementById('app');
+function safeParse(json){try{return JSON.parse(json);}catch(e){return null;}}
+function msToMMSS(ms){if(!isFinite(ms))return'DNF';var s=Math.floor(ms/1000),m=Math.floor(s/60),ss=s%60;return(m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+function secToTime(sec){if(!isFinite(sec))return'—';var m=Math.floor(sec/60),s=Math.round(sec%60);return m+':'+(s<10?'0':'')+s;}
+function mean(a){var b=a.filter(function(x){return typeof x==='number'&&isFinite(x);});return b.length?b.reduce(function(x,y){return x+y;},0)/b.length:null;}
+function sd(a){var b=a.filter(function(x){return typeof x==='number'&&isFinite(x);});if(b.length<2)return 0;var m=mean(b);return Math.sqrt(b.reduce(function(x,y){return x+Math.pow(y-m,2);},0)/b.length);}
+function bandByConsistency(r){if(!r.finished)return'DNF';var v=sd(r.perLapSec);if(v<=2.5)return'A';if(v<=6)return'B';if(v<=11)return'C';return'D';}
+function bandClass(b){return b==='A'?'bandA':b==='B'?'bandB':b==='C'?'bandC':b==='D'?'bandD':'bandDNF';}
+function pillClass(b){return b==='A'?'good':b==='B'?'blue':b==='C'?'warn':b==='D'?'bad':'grey';}
 
-  var runnerSel = document.getElementById('runnerSel');
-  var shareBtn = document.getElementById('shareBtn');
-  var clearBtn = document.getElementById('clearBtn');
-
-  var runnerTitle = document.getElementById('runnerTitle');
-  var finishPill = document.getElementById('finishPill');
-
-  var finishTimeEl = document.getElementById('finishTime');
-  var finishPills = document.getElementById('finishPills');
-
-  var rhythmScoreEl = document.getElementById('rhythmScore');
-  var rhythmBar = document.getElementById('rhythmBar');
-  var rhythmNote = document.getElementById('rhythmNote');
-
-  var trendHint = document.getElementById('trendHint');
-  var sparkPath = document.getElementById('sparkPath');
-  var sparkDot = document.getElementById('sparkDot');
-  var lapList = document.getElementById('lapList');
-
-  var completionPct = document.getElementById('completionPct');
-  var completionBar = document.getElementById('completionBar');
-  var completionNote = document.getElementById('completionNote');
-  var leaderBody = document.getElementById('leaderBody');
-
-  function safeParse(json){
-    try{ return JSON.parse(json); }catch(e){ return null; }
-  }
-
-  function msToMMSS(ms){
-    if (!isFinite(ms)) return 'DNF';
-    var s = Math.floor(ms/1000);
-    var m = Math.floor(s/60);
-    var ss= s%60;
-    return (m<10?'0':'')+m+':' + (ss<10?'0':'')+ss;
-  }
-
-  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
-
-  function mean(arr){
-    var s=0, c=0;
-    for (var i=0;i<arr.length;i++){
-      if (isFinite(arr[i])){ s += arr[i]; c++; }
+function normaliseData(data){
+  var runners=(data.runners||[]).map(function(r){
+    var cum=(r.splitsMs||[]).slice();
+    var per=[];
+    for(var i=0;i<cum.length;i++){
+      var prev=i===0?0:cum[i-1];
+      per.push((cum[i]-prev)/1000);
     }
-    return c? (s/c) : NaN;
-  }
-
-  function stddev(arr){
-    var m = mean(arr);
-    if (!isFinite(m)) return NaN;
-    var s=0, c=0;
-    for (var i=0;i<arr.length;i++){
-      if (isFinite(arr[i])){
-        var d = arr[i]-m;
-        s += d*d;
-        c++;
-      }
-    }
-    return c>1 ? Math.sqrt(s/(c-1)) : 0;
-  }
-
-  function rhythmScore(cumSplitsMs){
-    if (!cumSplitsMs || cumSplitsMs.length < 2){
-      return {score: 0, note: 'Need more laps to show rhythm.', perLap: []};
-    }
-    var per = [];
-    for (var i=0;i<cumSplitsMs.length;i++){
-      var prev = i===0 ? 0 : cumSplitsMs[i-1];
-      per.push(cumSplitsMs[i] - prev);
-    }
-    var m = mean(per);
-    var sd = stddev(per);
-    if (!isFinite(m) || m<=0) return {score: 0, note:'Not enough data.', perLap: per};
-
-    var cv = sd / m;
-    var score = 100 * Math.exp(-6*cv);
-    score = Math.round(clamp(score, 0, 100));
-
-    var note =
-      (score>=75) ? 'Very steady. Nice rhythm.' :
-      (score>=55) ? 'Quite steady. Keep matching steps and breathing.' :
-      (score>=35) ? 'Getting there. Aim for smoother rhythm.' :
-                    'Keep practicing. Start calm and stay even.';
-    return {score: score, note: note, perLap: per};
-  }
-
-  function trendTag(perLap){
-    if (!perLap || perLap.length < 2) return {tag:'—', hint:'Need more laps for a trend.'};
-    var mid = Math.floor(perLap.length/2);
-    var a = mean(perLap.slice(0, mid));
-    var b = mean(perLap.slice(mid));
-    if (!isFinite(a) || !isFinite(b)) return {tag:'—', hint:'—'};
-    var diff = (b - a) / a;
-    if (diff <= -0.03) return {tag:'Strong finish', hint:'Later laps were faster.'};
-    if (diff < 0.03)   return {tag:'Even pacing', hint:'Your pace stayed steady.'};
-    return {tag:'Faded a bit', hint:'Later laps slowed down.'};
-  }
-
-  function buildSpark(perLap){
-    var W=600, H=78, pad=10;
-    if (!perLap || !perLap.length){
-      sparkPath.setAttribute('d','');
-      sparkDot.setAttribute('cx','0');
-      sparkDot.setAttribute('cy','0');
-      return;
-    }
-    var min=Infinity, max=-Infinity;
-    for (var i=0;i<perLap.length;i++){
-      min=Math.min(min, perLap[i]);
-      max=Math.max(max, perLap[i]);
-    }
-    if (!isFinite(min) || !isFinite(max) || min===max){
-      min = min || 0;
-      max = min + 1;
-    }
-    var dx = (W - pad*2) / Math.max(1, (perLap.length-1));
-    var d = '';
-    for (var j=0;j<perLap.length;j++){
-      var x = pad + j*dx;
-      var t = (perLap[j]-min)/(max-min);
-      var y = pad + (1-t)*(H - pad*2);
-      d += (j===0 ? 'M' : ' L') + x.toFixed(1) + ' ' + y.toFixed(1);
-    }
-    sparkPath.setAttribute('d', d);
-
-    var lastX = pad + (perLap.length-1)*dx;
-    var lastT = (perLap[perLap.length-1]-min)/(max-min);
-    var lastY = pad + (1-lastT)*(H - pad*2);
-    sparkDot.setAttribute('cx', lastX.toFixed(1));
-    sparkDot.setAttribute('cy', lastY.toFixed(1));
-  }
-
-  function setFinishPills(finished){
-    while (finishPills.firstChild) finishPills.removeChild(finishPills.firstChild);
-
-    if (!finished){
-      var p1 = document.createElement('span');
-      p1.className = 'pill bad';
-      p1.textContent = 'DNF';
-      finishPills.appendChild(p1);
-
-      var p2 = document.createElement('span');
-      p2.className = 'pill';
-      p2.textContent = 'Next: calm start';
-      finishPills.appendChild(p2);
-      return;
-    }
-
-    var a = document.createElement('span');
-    a.className = 'pill good';
-    a.textContent = 'Finished';
-    finishPills.appendChild(a);
-
-    var b = document.createElement('span');
-    b.className = 'pill blue';
-    b.textContent = 'Notice your rhythm';
-    finishPills.appendChild(b);
-
-    var c = document.createElement('span');
-    c.className = 'pill';
-    c.textContent = 'Support a partner';
-    finishPills.appendChild(c);
-  }
-
-  function setLeaderTable(rows, selectedId){
-    while (leaderBody.firstChild) leaderBody.removeChild(leaderBody.firstChild);
-    for (var i=0;i<rows.length;i++){
-      var r = rows[i];
-      var tr = document.createElement('tr');
-      if (String(r.id) === String(selectedId)) tr.className = 'me';
-      tr.innerHTML =
-        '<td>'+r.id+'</td>' +
-        '<td>'+(isFinite(r.finishMs) ? msToMMSS(r.finishMs) : 'DNF')+'</td>' +
-        '<td>'+(isFinite(r.rhythm) ? (r.rhythm + '/100') : '—')+'</td>';
-      leaderBody.appendChild(tr);
-    }
-  }
-
-  function setGroupSnapshot(allRows){
-    var total = allRows.length;
-    var finished = 0;
-    for (var i=0;i<allRows.length;i++){
-      if (isFinite(allRows[i].finishMs)) finished++;
-    }
-    var pct = total ? Math.round((finished/total)*100) : 0;
-    completionPct.textContent = pct + '%';
-    completionBar.style.width = pct + '%';
-    completionNote.textContent = finished + ' of ' + total + ' finished.';
-  }
-
-  function buildRunnerOptions(runners){
-    while (runnerSel.firstChild) runnerSel.removeChild(runnerSel.firstChild);
-
-    var opt0 = document.createElement('option');
-    opt0.value = '__group__';
-    opt0.textContent = 'Group (Everyone)';
-    runnerSel.appendChild(opt0);
-
-    for (var i=0;i<runners.length;i++){
-      var opt = document.createElement('option');
-      opt.value = String(runners[i].id);
-      opt.textContent = 'Runner ' + runners[i].id;
-      runnerSel.appendChild(opt);
-    }
-  }
-
-  function applyMeta(data){
-    var when = data.createdAt ? new Date(data.createdAt) : null;
-    var whenStr = when && !isNaN(when.getTime()) ? when.toLocaleString() : '—';
-    metaLine.textContent =
-      (data.runDistanceMeters ? (data.runDistanceMeters + ' m') : 'Run') +
-      ' • ' + (data.lapsConfig ? (data.lapsConfig + ' laps') : '') +
-      ' • ' + whenStr;
-  }
-
-  function getRunnerFromQuery(){
-    var params = new URLSearchParams(location.search);
-    return params.get('runner');
-  }
-
-  function setQueryRunner(val){
-    var params = new URLSearchParams(location.search);
-    if (!val || val === '__group__') params.delete('runner');
-    else params.set('runner', val);
-    var newUrl = location.pathname + (params.toString() ? ('?' + params.toString()) : '');
-    history.replaceState(null, '', newUrl);
-  }
-
-  function showGroupMode(data, selectedId){
-    runnerTitle.textContent = 'Everyone';
-    finishPill.textContent = 'Group';
-    finishPill.className = 'pill';
-
-    finishTimeEl.textContent = data.lapsConfig + ' laps';
-    setFinishPills(true);
-
-    rhythmScoreEl.textContent = 'Together';
-    rhythmBar.style.width = '100%';
-    rhythmNote.textContent = 'Today’s focus: rhythm, effort, feelings, and support.';
-
-    trendHint.textContent = 'From “only speed” to better awareness and support.';
-    sparkPath.setAttribute('d','');
-    sparkDot.setAttribute('cx','0');
-    sparkDot.setAttribute('cy','0');
-    lapList.textContent = 'Try saying: “You can do it!” or “Let’s match our rhythm!”';
-
-    var rows = [];
-    for (var i=0;i<data.runners.length;i++){
-      var r = data.runners[i];
-      var finishMs = r.splitsMs && r.splitsMs.length ? r.splitsMs[r.splitsMs.length-1] : NaN;
-      var rsObj = rhythmScore(r.splitsMs || []);
-      rows.push({ id:r.id, finishMs: finishMs, rhythm: rsObj.score });
-    }
-    rows.sort(function(a,b){
-      var fa = a.finishMs, fb = b.finishMs;
-      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
-      if (!isFinite(fa)) return 1;
-      if (!isFinite(fb)) return -1;
-      return fa - fb;
-    });
-
-    setGroupSnapshot(rows);
-    setLeaderTable(rows, selectedId);
-  }
-
-  function showRunnerMode(data, runnerId){
-    var r = null;
-    for (var i=0;i<data.runners.length;i++){
-      if (String(data.runners[i].id) === String(runnerId)){
-        r = data.runners[i];
-        break;
-      }
-    }
-    if (!r){
-      showGroupMode(data, runnerId);
-      return;
-    }
-
-    runnerTitle.textContent = 'Runner ' + r.id;
-    finishPill.textContent = r.finished ? 'Finished' : 'DNF';
-    finishPill.className = 'pill ' + (r.finished ? 'good' : 'bad');
-
-    var splits = r.splitsMs || [];
-    var finishMs = splits.length ? splits[splits.length-1] : NaN;
-
-    finishTimeEl.textContent = isFinite(finishMs) ? msToMMSS(finishMs) : 'DNF';
-    setFinishPills(!!r.finished);
-
-    var rs = rhythmScore(splits);
-    rhythmScoreEl.textContent = rs.score + '/100';
-    rhythmBar.style.width = rs.score + '%';
-    rhythmNote.textContent = rs.note;
-
-    var perLap = rs.perLap || [];
-    var t = trendTag(perLap);
-    trendHint.textContent = t.tag + ' • ' + t.hint;
-    buildSpark(perLap);
-
-    if (!perLap.length){
-      lapList.textContent = 'No lap trend available yet.';
-    } else {
-      var out = [];
-      for (var j=0;j<perLap.length;j++){
-        out.push('Lap ' + (j+1) + ': ' + msToMMSS(perLap[j]));
-      }
-      lapList.textContent = out.join('  •  ');
-    }
-
-    var rows = [];
-    for (var k=0;k<data.runners.length;k++){
-      var rr = data.runners[k];
-      var fms = rr.splitsMs && rr.splitsMs.length ? rr.splitsMs[rr.splitsMs.length-1] : NaN;
-      var rrScore = rhythmScore(rr.splitsMs || []).score;
-      rows.push({ id: rr.id, finishMs: fms, rhythm: rrScore });
-    }
-    rows.sort(function(a,b){
-      var fa = a.finishMs, fb = b.finishMs;
-      if (!isFinite(fa) && !isFinite(fb)) return Number(a.id)-Number(b.id);
-      if (!isFinite(fa)) return 1;
-      if (!isFinite(fb)) return -1;
-      return fa - fb;
-    });
-
-    setGroupSnapshot(rows);
-    setLeaderTable(rows, r.id);
-  }
-
-  function readData(){
-    var raw = localStorage.getItem(STORE_KEY);
-    var data = safeParse(raw || '');
-    if (!data || !data.runners || !Array.isArray(data.runners)){
-      noData.style.display = 'block';
-      app.style.display = 'none';
-      metaLine.textContent = 'No data yet';
-      return null;
-    }
-    return data;
-  }
-
-  function refresh(){
-    var data = readData();
-    if (!data) return;
-
-    noData.style.display = 'none';
-    app.style.display = 'grid';
-
-    applyMeta(data);
-
-    data.runners.sort(function(a,b){ return Number(a.id)-Number(b.id); });
-    buildRunnerOptions(data.runners);
-
-    var q = getRunnerFromQuery();
-    if (q && q !== '__group__'){
-      runnerSel.value = q;
-      if (runnerSel.value !== q) runnerSel.value = '__group__';
-    } else {
-      runnerSel.value = '__group__';
-    }
-
-    if (runnerSel.value === '__group__') showGroupMode(data, q);
-    else showRunnerMode(data, runnerSel.value);
-  }
-
-  runnerSel.addEventListener('change', function(){
-    setQueryRunner(runnerSel.value);
-    refresh();
+    var finishMs=cum.length?cum[cum.length-1]:NaN;
+    var obj={
+      id:String(r.id),
+      finished:!!r.finished,
+      finishMs:finishMs,
+      totalLaps:r.totalLaps||data.lapsConfig||cum.length,
+      perLapSec:per,
+      splitsMs:cum
+    };
+    obj.band=bandByConsistency(obj);
+    return obj;
   });
+  return {
+    createdAt:data.createdAt,
+    runDistanceMeters:data.runDistanceMeters||0,
+    lapsConfig:data.lapsConfig||0,
+    runners:runners
+  };
+}
 
-  shareBtn.addEventListener('click', async function(){
-    try{
-      await navigator.clipboard.writeText(location.href);
-      shareBtn.textContent = 'Copied!';
-      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
-    }catch(e){
-      shareBtn.textContent = 'Copy failed';
-      setTimeout(function(){ shareBtn.textContent = 'Copy Link'; }, 900);
-    }
-  });
+function strategy(r){
+ if(!r.finished)return['Incomplete','The student did not complete all laps.'];
+ var a=r.perLapSec, first=a[0], last=a[a.length-1], av=mean(a);
+ if(Math.abs(last-first)<=3&&sd(a)<=2.5)return['Even pace','Lap times stayed very close.'];
+ if(last<first-5)return['Slow start, fast finish','Started slower and finished faster.'];
+ if(first<av-5&&last>av+5)return['Fast start, slower finish','Started faster than could be maintained.'];
+ return['Changing pace','Lap times changed during the run.'];
+}
+function splitChange(r){if(!r.finished)return['—','Not enough complete data.'];var v=sd(r.perLapSec);if(v<=2.5)return['Small','Very consistent splits.'];if(v<=6)return['Moderate','Some changes between laps.'];if(v<=11)return['Large','Clear pacing changes.'];return['Very large','Pacing changed a lot.'];}
+function startFeedback(r){if(!r.finished)return'Full pacing cannot be judged because the run was not completed.';var a=r.perLapSec,av=mean(a);if(a[0]<av-6)return'The first lap was fast compared with the rest.';if(a[0]>av+4)return'The first lap was slower than the average pace.';return'The first lap was close to the average pace.';}
+function middleFeedback(r){if(!r.finished)return'The run was not maintained to the end.';var a=r.perLapSec,early=mean([a[0],a[1]]),mid=mean([a[2],a[3]]);if(mid-early>=10)return'There was a clear slowdown in the middle laps.';if(mid-early>=5)return'There was some slowdown in the middle laps.';if(mid<early-3)return'The middle laps improved after the start.';return'Middle laps were quite steady.';}
+function finishFeedback(r){if(!r.finished)return'No final lap data available.';var a=r.perLapSec,last=a[a.length-1],prev=a[a.length-2];if(last<=prev-3)return'The final lap was faster.';if(Math.abs(last-prev)<=2)return'The final lap was steady.';return'The final lap was slower.';}
+function takeaway(r){if(!r.finished)return'Main focus: complete all laps first, then improve pacing.';var st=strategy(r)[0];if(st==='Even pace')return'Good pacing control. Next step: keep this even pattern while slowly improving speed.';if(st==='Slow start, fast finish')return'Good finish. Next step: start a little more confidently without losing control.';if(st==='Fast start, slower finish')return'Main focus: start slightly slower so the pace can be held across all laps.';return'Main focus: reduce big changes between laps.';}
 
-  clearBtn.addEventListener('click', function(){
-    localStorage.removeItem(STORE_KEY);
-    refresh();
-  });
+function checkHTML(items){return items.map(function(x,i){return'<div class="check"><div class="dot">'+(i+1)+'</div><div><b>'+x[0]+'</b><span>'+x[1]+'</span></div></div>';}).join('');}
+function questionsHTML(qs){return qs.slice(0,2).map(function(q){return'<div class="check"><div class="dot">?</div><div><b>'+q.q+'</b><span><b>Expected responses:</b> '+q.a.join(' • ')+'</span></div></div>';}).join('');}
 
-  refresh();
+function classQuestions(){
+ return[
+  {q:'Looking at the class graph, what happens when many runners start too fast?',a:['The later laps become slower','The line moves higher because each lap takes longer','It becomes harder to finish strongly']},
+  {q:'What would a better pacing plan look like?',a:['Start at a pace you can hold','Keep middle laps close to the first lap','Try to finish steady or slightly faster']}
+ ];
+}
+function studentQuestions(r){
+ if(!r.finished)return[
+  {q:'What pace could help you complete the run next time?',a:['Start slower','Keep the first laps controlled','Avoid chasing faster runners too early']},
+  {q:'Which lap first shows that your pace became hard to hold?',a:['Look for the first much slower split','Compare each lap with the one before it','Notice where the line moves higher']}
+ ];
+ var st=strategy(r)[0];
+ if(st==='Slow start, fast finish')return[
+  {q:'What does your faster finish tell you about your start?',a:['I may have started too cautiously','I had energy left at the end','I could start slightly faster next time']},
+  {q:'How can you improve without losing your strong finish?',a:['Increase the first lap slightly','Keep the middle laps steady','Do not sprint too early']}
+ ];
+ if(st==='Fast start, slower finish')return[
+  {q:'Which split shows that you may have started too fast?',a:['The first lap is much faster','Later laps are slower','The line moves higher after the start']},
+  {q:'What can you change in Lap 1 next time?',a:['Start calmer','Run at a pace I can hold','Save energy for the middle laps']}
+ ];
+ return[
+  {q:'Which lap changed the most?',a:['Find the biggest jump in split time','Look for where the line rises most','Compare each lap with the lap before']},
+  {q:'What can you do to keep the next run more even?',a:['Control the first lap','Focus on steady breathing','Keep each lap close in time']}
+ ];
+}
+
+function reflectionQuestionsHTML(){
+var qs=[
+"How does your body feel right now? (e.g., tight, loose, heavy, light)",
+"On a scale of 1-10, what is your effort level?",
+"Where do you feel the most tension or fatigue?",
+"How is your breathing? Can you hold a conversation?",
+"Is the pace feeling forced or smooth?",
+"Do you have any aches or pains that feel different than normal running fatigue?",
+"What are you noticing about your surroundings?",
+"What thoughts come up when fatigue hits?",
+"Are your thoughts mostly positive or negative right now?",
+"What are you focusing on to keep going? (e.g., breathing, cadence, scenery)",
+"Are you in the 'zone' or are you fighting distractions?",
+"How are you feeling mentally? (e.g., confident, stressed, frustrated, joyful)",
+"What is motivating you to push through this specific moment?",
+"Is this run feeling fun or laborious?",
+"Are you having any negative self-talk, and if so, what is it saying?",
+"Did your perception of effort match the actual pace/reality?",
+"What went well on this run?",
+"What was the hardest part of today's run, and why?",
+"What did you learn about your endurance today?"
+];
+return qs.map(function(q,i){return'<div class="check"><div class="dot">'+(i+1)+'</div><div><b>'+q+'</b></div></div>';}).join('');
+}
+
+function graph(svg, runners, height, selectedId){
+ var W=760,H=height,left=60,right=720,top=25,bottom=H-50,laps=0;
+ runners.forEach(function(r){laps=Math.max(laps,r.perLapSec.length);});
+ laps=Math.max(laps,1);
+ var all=[];
+ runners.forEach(function(r){all=all.concat(r.perLapSec);});
+ var min=Math.min.apply(null,all.concat([100]));
+ var max=Math.max.apply(null,all.concat([185]));
+ min=Math.max(40,Math.floor((min-10)/10)*10);
+ max=Math.ceil((max+10)/10)*10;
+ if(max<=min)max=min+60;
+ var xs=[];
+ for(var i=0;i<laps;i++){xs.push(left+((right-left)/(Math.max(1,laps-1)))*i);}
+ function y(sec){return top+((sec-min)/(max-min))*(bottom-top);}
+ var html='<rect width="'+W+'" height="'+H+'" fill="#fff"/><rect x="'+left+'" y="'+top+'" width="'+(right-left)+'" height="'+(bottom-top)+'" fill="rgba(1,88,113,.03)" stroke="#dbe4ec"/>';
+ var steps=4;
+ for(var g=0;g<=steps;g++){
+  var sec=min+((max-min)/steps)*g, yy=y(sec);
+  html+='<line x1="'+left+'" y1="'+yy+'" x2="'+right+'" y2="'+yy+'" stroke="#dbe4ec"/><text x="18" y="'+(yy+4)+'" font-size="12" fill="#64748b">'+secToTime(sec)+'</text>';
+ }
+ xs.forEach(function(x,i){html+='<line x1="'+x+'" y1="'+top+'" x2="'+x+'" y2="'+bottom+'" stroke="#edf2f7"/><text x="'+(x-18)+'" y="'+(H-18)+'" font-size="12" fill="#64748b">Lap '+(i+1)+'</text>';});
+ var colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
+ runners.forEach(function(r){
+  var pts=r.perLapSec.map(function(sec,i){return xs[i]+','+y(sec);}).join(' ');
+  if(pts)html+='<polyline fill="none" stroke="'+(colors[r.band]||'#94a3b8')+'" stroke-width="'+(selectedId===r.id?4:2)+'" opacity="'+(selectedId?(selectedId===r.id?1:.18):.38)+'" points="'+pts+'"/>';
+ });
+ svg.innerHTML=html;
+}
+
+function setClassView(data){
+ var runners=data.runners, finishers=runners.filter(function(r){return r.finished;});
+ var dnf=runners.length-finishers.length;
+ var improving=finishers.filter(function(r){return strategy(r)[0]==='Slow start, fast finish';}).length;
+ var fastFade=finishers.filter(function(r){return strategy(r)[0]==='Fast start, slower finish';}).length;
+
+ els.mainTitle.textContent='Whole-Class Feedback';
+ els.mainHint.textContent='Simple feedback based on finish time and lap splits.';
+ els.modePill.textContent='Class'; els.modePill.className='pill blue';
+
+ els.overview1.textContent=finishers.length+'/'+runners.length; els.overview1Text.textContent=finishers.length+' finished, '+dnf+' DNF';
+ els.overview2.textContent='Mixed'; els.overview2Text.textContent='Different pacing styles across the group';
+ els.overview3.textContent=fastFade>improving?'Fast start':'Varied'; els.overview3Text.textContent=fastFade+' runners showed fast start, slower finish';
+ els.overview4.textContent=improving>0?'Some lift':'Mixed'; els.overview4Text.textContent=improving+' runners started slower and finished faster';
+
+ els.mainTakeaway.textContent='The group showed mixed pacing. Some runners started too fast and slowed down, while some started slower and finished faster. The next focus is to choose a pace that can be held across all laps.';
+ els.feedbackBox.innerHTML=checkHTML([
+  ['Pacing consistency','Banding is based on how even the lap splits are, not who finished fastest.'],
+  ['Start control','Some runners started faster than they could hold. This made the middle and final laps slower.'],
+  ['Positive pacing examples','A few runners started slower and finished faster. This shows they had better control near the end.'],
+  ['Next focus','Aim for lap times that stay close together, then gradually improve speed.']
+ ]);
+ els.questionsBox.innerHTML=questionsHTML(classQuestions());
+ graph(els.selectedGraph,[{id:'avg',band:'B',perLapSec:avgSplits(finishers)}],230,null);
+ els.selectedGraphFooter.innerHTML='<span>Class average split by lap</span><span>Higher line = slower lap, lower line = faster lap</span>';
+ graph(els.allGraph,runners,300,null);
+ resetStudentPanel();
+ renderLeaderboard(runners,null);
+}
+
+function avgSplits(finishers){
+ var max=0;finishers.forEach(function(r){max=Math.max(max,r.perLapSec.length);});
+ var out=[];
+ for(var i=0;i<max;i++){out.push(mean(finishers.map(function(r){return r.perLapSec[i];}).filter(function(x){return isFinite(x);}))); }
+ return out.filter(function(x){return isFinite(x);});
+}
+
+function setStudentView(data,id){
+ var r=data.runners.find(function(x){return String(x.id)===String(id);});
+ if(!r){setClassView(data);return;}
+ els.mainTitle.textContent='Student #'+r.id+' Feedback';
+ els.mainHint.textContent='Simple feedback based on this student’s pace and lap splits.';
+ els.modePill.textContent='Student #'+r.id; els.modePill.className='pill '+pillClass(r.band);
+
+ els.overview1.textContent=isFinite(r.finishMs)?msToMMSS(r.finishMs):'DNF'; els.overview1Text.textContent='Finish time';
+ els.overview2.textContent=r.band; els.overview2Text.textContent='Pacing band based on split consistency';
+ els.overview3.textContent=strategy(r)[0]; els.overview3Text.textContent=strategy(r)[1];
+ els.overview4.textContent=splitChange(r)[0]; els.overview4Text.textContent=splitChange(r)[1];
+
+ els.mainTakeaway.textContent=takeaway(r);
+ els.feedbackBox.innerHTML=checkHTML([['Start control',startFeedback(r)],['Middle laps',middleFeedback(r)],['Finish',finishFeedback(r)],['Next focus',takeaway(r)]]);
+ els.questionsBox.innerHTML=questionsHTML(studentQuestions(r));
+
+ graph(els.selectedGraph,[r],230,r.id);
+ els.selectedGraphFooter.innerHTML='<span>Splits: '+r.perLapSec.map(secToTime).join(' • ')+'</span><span>Higher line = slower lap, lower line = faster lap</span>';
+ graph(els.allGraph,data.runners,300,r.id);
+
+ els.studentBandPill.textContent=r.band==='DNF'?'DNF':'Band '+r.band; els.studentBandPill.className='pill '+pillClass(r.band);
+ els.studentNo.textContent='#'+r.id; els.studentFinish.textContent='Finish: '+(isFinite(r.finishMs)?msToMMSS(r.finishMs):'DNF');
+ els.strategyType.textContent=strategy(r)[0]; els.strategyHint.textContent=strategy(r)[1];
+ els.splitVar.textContent=splitChange(r)[0]; els.splitVarHint.textContent=splitChange(r)[1];
+ els.reflectionBox.innerHTML=reflectionQuestionsHTML();
+
+ renderLeaderboard(data.runners,r.id);
+}
+
+function resetStudentPanel(){
+ els.studentBandPill.textContent='Select'; els.studentBandPill.className='pill grey';
+ els.studentNo.textContent='—'; els.studentFinish.textContent='Finish: —';
+ els.strategyType.textContent='—'; els.strategyHint.textContent='—';
+ els.splitVar.textContent='—'; els.splitVarHint.textContent='—';
+ els.reflectionBox.innerHTML='<div class="check"><div class="dot">i</div><div><b>Select a student</b><span>Individual reflection questions will appear here.</span></div></div>';
+}
+
+function renderLeaderboard(runners,selectedId){
+ els.leaderBody.innerHTML='';
+ var sorted=runners.slice().sort(function(a,b){
+  if(!a.finished&&!b.finished)return Number(a.id)-Number(b.id);
+  if(!a.finished)return 1;
+  if(!b.finished)return -1;
+  return a.finishMs-b.finishMs;
+ });
+ var pos=0;
+ sorted.forEach(function(r){
+  if(r.finished)pos++;
+  var tr=document.createElement('tr');
+  tr.className=bandClass(r.band)+(String(selectedId)===String(r.id)?' selected':'');
+  tr.innerHTML='<td>'+(r.finished?pos:'—')+'</td><td>'+r.id+'</td><td>'+(r.finished?msToMMSS(r.finishMs):'DNF')+'</td><td>'+r.band+'</td>';
+  els.leaderBody.appendChild(tr);
+ });
+}
+
+function buildSelect(runners){
+ els.viewSel.innerHTML='';
+ var g=document.createElement('option');g.value='__group__';g.textContent='Whole Class';els.viewSel.appendChild(g);
+ runners.slice().sort(function(a,b){return Number(a.id)-Number(b.id);}).forEach(function(r){
+  var o=document.createElement('option');o.value=r.id;o.textContent='Student #'+r.id;els.viewSel.appendChild(o);
+ });
+}
+
+function applyMeta(data){
+ var when=data.createdAt?new Date(data.createdAt):null;
+ var whenStr=when&&!isNaN(when.getTime())?when.toLocaleString():'—';
+ els.metaLine.textContent=(data.runDistanceMeters?data.runDistanceMeters+' m':'Run')+' • '+(data.lapsConfig?data.lapsConfig+' laps':'')+' • '+whenStr;
+}
+
+function refresh(){
+ var raw=localStorage.getItem(STORE_KEY);
+ var parsed=safeParse(raw||'');
+ if(!parsed||!parsed.runners||!Array.isArray(parsed.runners)){
+  els.noData.style.display='block'; els.app.style.display='none'; els.metaLine.textContent='No data yet'; return;
+ }
+ var data=normaliseData(parsed);
+ els.noData.style.display='none'; els.app.style.display='grid';
+ applyMeta(data); buildSelect(data.runners); setClassView(data);
+
+ els.viewSel.onchange=function(){
+  if(els.viewSel.value==='__group__')setClassView(data);
+  else setStudentView(data,els.viewSel.value);
+ };
+}
+
+els.shareBtn.addEventListener('click',async function(){
+ try{await navigator.clipboard.writeText(location.href);els.shareBtn.textContent='Copied!';setTimeout(function(){els.shareBtn.textContent='Copy Link';},900);}
+ catch(e){els.shareBtn.textContent='Copy failed';setTimeout(function(){els.shareBtn.textContent='Copy Link';},900);}
+});
+els.clearBtn.addEventListener('click',function(){localStorage.removeItem(STORE_KEY);refresh();});
+
+refresh();
 })();
 </script>
 </body>
