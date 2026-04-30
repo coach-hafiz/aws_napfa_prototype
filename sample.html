@@ -2,237 +2,415 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Run Feedback — Sample Class</title>
-
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Smart Run Feedback — Sample Detailed Summary</title>
 <style>
-body{font-family:system-ui;margin:0;background:#f6f7f9}
-header{padding:14px;background:#015871;color:#fff;font-weight:900}
-main{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.card{background:#fff;border-radius:14px;padding:12px;box-shadow:0 6px 14px rgba(0,0,0,.08)}
-.sectionTitle{font-size:12px;font-weight:900;color:#015871;margin-bottom:8px;text-transform:uppercase}
-table{width:100%;border-collapse:collapse}
-th,td{padding:8px;text-align:center;border-bottom:1px solid #eee}
-th{background:#015871;color:#fff}
-tr{cursor:pointer}
-tr:hover{background:#eef6f8}
-.graph{border:1px solid #ddd;border-radius:10px;padding:8px}
-.small{font-size:12px;color:#666}
+:root{
+  --accent:#015871; --bg:#f6f7f9; --card:#fff; --muted:#64748b; --line:#e5e7eb;
+  --shadow:0 10px 22px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#0f172a}
+header{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line)}
+.headerInner{max-width:1280px;margin:0 auto;padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.badge{width:42px;height:42px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:900}
+.brand{display:flex;gap:10px;align-items:center;min-width:260px}
+h1{font-size:16px;margin:0}.sub{font-size:12px;color:#64748b;margin:0}
+.controls{display:flex;gap:10px;align-items:center;flex:1;justify-content:flex-end;flex-wrap:wrap}
+select,button{height:40px;border-radius:12px;border:1px solid var(--line);padding:0 12px;font-weight:800}
+button{border:0;background:var(--accent);color:#fff}
+button.secondary{background:#6b7280}
+main{max-width:1280px;margin:0 auto;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1100px){main{grid-template-columns:1fr}.controls{justify-content:flex-start}}
+.col{display:grid;gap:14px;align-content:start}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.cardHeader{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.cardTitle{margin:0;font-size:14px;font-weight:900}.cardHint{margin:2px 0 0;font-size:12px;color:#64748b}
+.cardBody{padding:12px 14px}
+.sectionTitle{font-size:12px;font-weight:900;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;margin:0 0 10px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:800px){.grid4,.grid3{grid-template-columns:1fr}}
+.tile{border:1px solid var(--line);border-radius:16px;padding:10px;background:#fff}
+.tile b{display:block;font-size:13px;margin-bottom:4px}.tile span{display:block;font-size:12px;color:#64748b}
+.bigNumber{font-size:28px;font-weight:950;margin:0}.mediumNumber{font-size:22px;font-weight:900;margin:0}
+.hr{height:1px;background:var(--line);margin:12px 0}
+.pill{display:inline-block;font-size:12px;font-weight:900;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff}
+.pill.good{background:rgba(22,163,74,.10);color:#0f5f2c}
+.pill.blue{background:rgba(37,99,235,.10);color:#133f94}
+.pill.warn{background:rgba(245,158,11,.12);color:#7a4b00}
+.pill.bad{background:rgba(239,68,68,.12);color:#7a0c0c}
+.pill.grey{background:rgba(148,163,184,.12);color:#475569}
+.legend{display:flex;flex-wrap:wrap;gap:8px}.legend span{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--line)}
+.checklist{display:grid;gap:8px}.check{display:flex;gap:8px;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+.dot{width:24px;height:24px;border-radius:999px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:900;flex:0 0 auto}
+.check b{display:block;font-size:13px;margin-bottom:2px}.check span{display:block;font-size:12px;color:#64748b}
+.graphBox{border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px;overflow:auto}
+.scaleLabel{font-size:12px;color:#64748b;display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+.tableWrap{max-height:520px;overflow:auto;border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px 8px;border-bottom:1px solid #f1f5f9;text-align:center}
+th{background:var(--accent);color:#fff;position:sticky;top:0}
+tbody tr{cursor:pointer}
+tbody tr:nth-child(even){background:#fafafa}
+tbody tr:hover{background:rgba(1,88,113,.08)}
+tbody tr.selected{outline:2px solid rgba(1,88,113,.25);outline-offset:-2px;background:rgba(1,88,113,.06)}
+.bandA{background:rgba(22,163,74,.10)}
+.bandB{background:rgba(37,99,235,.08)}
+.bandC{background:rgba(245,158,11,.10)}
+.bandD{background:rgba(239,68,68,.10)}
+.bandDNF{background:rgba(148,163,184,.12)}
+footer{max-width:1280px;margin:0 auto;padding:10px 14px 24px;font-size:12px;color:#64748b}
 </style>
 </head>
 
 <body>
-
 <header>
-Smart Run Feedback — Sample Class (36 Students, 2.4km, 6 Laps)
+  <div class="headerInner">
+    <div class="brand">
+      <div class="badge">F</div>
+      <div>
+        <h1>Smart Run Feedback — Sample Summary</h1>
+        <p class="sub">2.4 km • 6 laps • 36 runners • Sample post-assessment data</p>
+      </div>
+    </div>
+    <div class="controls">
+      <label for="viewSel" style="font-size:12px;font-weight:900">View</label>
+      <select id="viewSel"></select>
+      <button class="secondary">Copy Link</button>
+      <button>Clear Data</button>
+    </div>
+  </div>
 </header>
 
 <main>
+  <div class="col">
+    <section class="card">
+      <div class="cardHeader">
+        <div>
+          <p class="cardTitle" id="mainTitle">Whole-Class Feedback</p>
+          <p class="cardHint" id="mainHint">Simple feedback based on finish time and lap splits.</p>
+        </div>
+        <div class="pill blue" id="modePill">Class</div>
+      </div>
 
-<!-- LEFT COLUMN -->
-<div class="card">
+      <div class="cardBody">
+        <div class="sectionTitle">Overview</div>
+        <div class="grid4">
+          <div class="tile"><b>Completion</b><p class="bigNumber" id="overview1">32/36</p><span id="overview1Text">32 finished, 4 DNF</span></div>
+          <div class="tile"><b>Pacing pattern</b><p class="bigNumber" id="overview2">Mixed</p><span id="overview2Text">Different pacing styles across the group</span></div>
+          <div class="tile"><b>Start control</b><p class="bigNumber" id="overview3">Fast start</p><span id="overview3Text">14 runners started too fast</span></div>
+          <div class="tile"><b>Finish pattern</b><p class="bigNumber" id="overview4">Some lift</p><span id="overview4Text">6 runners finished faster</span></div>
+        </div>
 
-<div class="sectionTitle">Overview</div>
-<p><b>Completion:</b> 32 / 36</p>
-<p><b>Pacing:</b> Mixed</p>
-<p><b>Start Control:</b> Many started fast</p>
-<p><b>Finish:</b> Some strong finishes</p>
+        <div class="hr"></div>
 
-<hr>
+        <div class="sectionTitle">Leaderboard</div>
+        <div class="legend">
+          <span class="bandA">A: Very consistent pacing</span>
+          <span class="bandB">B: Mostly consistent pacing</span>
+          <span class="bandC">C: Some pacing changes</span>
+          <span class="bandD">D: Large pacing changes</span>
+          <span class="bandDNF">DNF: Did not finish</span>
+        </div>
+        <div class="tableWrap" style="margin-top:10px">
+          <table>
+            <thead><tr><th>Position</th><th>Runner #</th><th>Finish Time</th><th>Pacing Band</th></tr></thead>
+            <tbody id="leaderBodyClass"></tbody>
+          </table>
+        </div>
 
-<div class="sectionTitle">Leaderboard (Click to view student)</div>
+        <div class="hr"></div>
 
-<table id="table">
-<thead>
-<tr>
-<th>Pos</th>
-<th>Runner</th>
-<th>Finish</th>
-<th>Band</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
+        <div class="sectionTitle">Selected Lap Trend</div>
+        <div class="graphBox">
+          <svg id="selectedGraph" width="100%" height="230" viewBox="0 0 760 230"></svg>
+          <div class="scaleLabel" id="selectedGraphFooter">
+            <span>Class average split by lap</span>
+            <span>Higher line = slower lap, lower line = faster lap</span>
+          </div>
+        </div>
 
-<hr>
+        <div class="hr"></div>
 
-<div class="sectionTitle">Selected Lap Trend</div>
-<svg id="selectedGraph" width="100%" height="200"></svg>
-<div class="small">Higher line = slower lap</div>
+        <div class="sectionTitle">All Runners’ Split Times</div>
+        <div class="graphBox">
+          <svg id="allGraph" width="100%" height="300" viewBox="0 0 760 300"></svg>
+          <div class="scaleLabel">
+            <span>Each line = one runner</span>
+            <span>Higher line = slower lap, lower line = faster lap</span>
+          </div>
+        </div>
 
-<hr>
+        <div class="hr"></div>
 
-<div class="sectionTitle">All Runners Split Times</div>
-<svg id="allGraph" width="100%" height="240"></svg>
+        <div class="sectionTitle">Feedback</div>
+        <div class="checklist" id="feedbackBox"></div>
 
-<hr>
+        <div class="hr"></div>
 
-<div class="sectionTitle">Feedback</div>
-<ul>
-<li>Pacing consistency varied across the class</li>
-<li>Many runners started too fast and slowed later</li>
-<li>Some runners showed strong finishing pace</li>
-<li>Focus next: maintain even lap timing</li>
-</ul>
+        <div class="sectionTitle">Questions to Check Understanding</div>
+        <div class="checklist" id="questionsBox"></div>
 
-<hr>
+        <div class="hr"></div>
 
-<div class="sectionTitle">Questions</div>
-<p><b>Q1:</b> What happens when you start too fast?<br>
-<span class="small">→ Later laps slower, harder finish</span></p>
+        <div class="sectionTitle">Key Takeaway</div>
+        <div class="tile"><b>Main point</b><span id="mainTakeaway"></span></div>
+      </div>
+    </section>
+  </div>
 
-<p><b>Q2:</b> What is a better pacing plan?<br>
-<span class="small">→ Steady laps, controlled start</span></p>
+  <div class="col">
+    <section class="card" id="studentCard">
+      <div class="cardHeader">
+        <div>
+          <p class="cardTitle">Individual Student Feedback</p>
+          <p class="cardHint">Select a student to see feedback and reflection questions.</p>
+        </div>
+        <div class="pill grey" id="studentBandPill">Select</div>
+      </div>
 
-<hr>
+      <div class="cardBody">
+        <div class="sectionTitle">Selected Student</div>
+        <div class="grid3">
+          <div class="tile"><b>Student</b><p class="mediumNumber" id="studentNo">—</p><span id="studentFinish">Finish: —</span></div>
+          <div class="tile"><b>Pacing style</b><p class="mediumNumber" id="strategyType">—</p><span id="strategyHint">—</span></div>
+          <div class="tile"><b>Split changes</b><p class="mediumNumber" id="splitVar">—</p><span id="splitVarHint">—</span></div>
+        </div>
 
-<div class="sectionTitle">Key Takeaway</div>
-<p>Most students need to improve pacing control — aim for even laps first before increasing speed.</p>
+        <div class="hr"></div>
 
-</div>
+        <div class="sectionTitle">Leaderboard</div>
+        <div class="legend">
+          <span class="bandA">A: Very consistent pacing</span>
+          <span class="bandB">B: Mostly consistent pacing</span>
+          <span class="bandC">C: Some pacing changes</span>
+          <span class="bandD">D: Large pacing changes</span>
+          <span class="bandDNF">DNF: Did not finish</span>
+        </div>
+        <div class="tableWrap" style="margin-top:10px">
+          <table>
+            <thead><tr><th>Position</th><th>Runner #</th><th>Finish Time</th><th>Pacing Band</th></tr></thead>
+            <tbody id="leaderBodyStudent"></tbody>
+          </table>
+        </div>
 
-<!-- RIGHT COLUMN -->
-<div class="card">
+        <div class="hr"></div>
 
-<div class="sectionTitle">Selected Student</div>
-<p><b>ID:</b> <span id="sid">—</span></p>
-<p><b>Finish:</b> <span id="stime">—</span></p>
-<p><b>Strategy:</b> <span id="strategy">—</span></p>
-
-<hr>
-
-<div class="sectionTitle">Reflection Questions</div>
-<ul>
-<li>How does your body feel right now?</li>
-<li>What was your effort level (1–10)?</li>
-<li>Where did you feel fatigue most?</li>
-<li>Was your pace smooth or forced?</li>
-<li>What went well?</li>
-<li>What was hardest?</li>
-</ul>
-
-</div>
-
+        <div class="sectionTitle">Student Reflection Questions</div>
+        <div class="checklist" id="reflectionBox">
+          <div class="check"><div class="dot">i</div><div><b>Select a student</b><span>Individual reflection questions will appear here.</span></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
 </main>
 
+<footer>
+  Sample only. This page uses pace and lap splits. It does not assume heart rate, motivation, or effort unless students answer the reflection questions.
+</footer>
+
 <script>
+(function(){
+var runners=[
+{id:28,finish:'10:41',band:'A',splits:[107,106,107,107,107,107]},
+{id:7,finish:'10:49',band:'A',splits:[108,108,109,109,108,107]},
+{id:34,finish:'10:58',band:'A',splits:[109,109,110,110,110,110]},
+{id:13,finish:'11:10',band:'B',splits:[115,114,112,111,110,108]},
+{id:22,finish:'11:18',band:'B',splits:[118,116,114,112,110,108]},
+{id:4,finish:'11:26',band:'B',splits:[119,117,115,113,112,110]},
+{id:31,finish:'11:31',band:'A',splits:[114,114,115,116,116,116]},
+{id:15,finish:'11:42',band:'B',splits:[110,114,118,119,120,121]},
+{id:2,finish:'11:51',band:'B',splits:[112,116,119,120,121,123]},
+{id:36,finish:'12:03',band:'B',splits:[114,118,121,122,123,125]},
+{id:19,finish:'12:04',band:'C',splits:[130,126,122,119,115,112]},
+{id:11,finish:'12:17',band:'B',splits:[118,120,122,123,126,128]},
+{id:25,finish:'12:26',band:'B',splits:[118,121,124,125,128,130]},
+{id:5,finish:'12:34',band:'C',splits:[120,122,124,126,129,133]},
+{id:30,finish:'12:41',band:'C',splits:[121,123,125,127,130,135]},
+{id:9,finish:'12:49',band:'C',splits:[122,124,126,128,132,137]},
+{id:17,finish:'12:58',band:'D',splits:[116,123,130,131,138,140]},
+{id:3,finish:'13:09',band:'D',splits:[117,125,131,133,140,143]},
+{id:21,finish:'13:17',band:'C',splits:[120,127,132,133,140,145]},
+{id:12,finish:'13:29',band:'C',splits:[122,128,134,136,143,146]},
+{id:27,finish:'13:37',band:'C',splits:[123,129,135,137,144,149]},
+{id:6,finish:'13:48',band:'C',splits:[124,130,137,139,147,151]},
+{id:33,finish:'13:50',band:'D',splits:[148,142,138,134,134,134]},
+{id:18,finish:'13:59',band:'C',splits:[126,132,138,140,149,154]},
+{id:1,finish:'14:12',band:'C',splits:[128,134,141,143,151,155]},
+{id:24,finish:'14:24',band:'C',splits:[130,135,142,144,154,159]},
+{id:10,finish:'14:49',band:'D',splits:[124,134,145,151,164,171]},
+{id:29,finish:'15:02',band:'D',splits:[126,137,148,154,166,171]},
+{id:16,finish:'15:16',band:'D',splits:[128,139,151,157,169,172]},
+{id:35,finish:'15:27',band:'D',splits:[129,141,153,159,170,175]},
+{id:8,finish:'15:43',band:'D',splits:[131,144,156,162,173,177]},
+{id:23,finish:'15:58',band:'D',splits:[132,146,159,164,177,180]},
+{id:14,finish:'DNF',band:'DNF',splits:[131,144,161]},
+{id:20,finish:'DNF',band:'DNF',splits:[135,151,168]},
+{id:26,finish:'DNF',band:'DNF',splits:[138,156,175]},
+{id:32,finish:'DNF',band:'DNF',splits:[140,159,181]}
+];
 
-// ===== MOCK DATA =====
-function rand(min,max){return Math.random()*(max-min)+min}
-
-let runners=[];
-
-for(let i=1;i<=36;i++){
-  let splits=[]
-  
-  // mix pacing types
-  let type=Math.random()
-  
-  for(let l=0;l<6;l++){
-    let base=90
-    
-    if(type<0.33){ // even
-      splits.push(base + rand(-3,3))
-    }
-    else if(type<0.66){ // fast start slow finish
-      splits.push(base - (l*4) + rand(-2,2))
-    }
-    else{ // slow start fast finish
-      splits.push(base + (l*4) + rand(-2,2))
-    }
-  }
-  
-  let total=splits.reduce((a,b)=>a+b,0)
-  
-  runners.push({
-    id:i,
-    splits,
-    total
-  })
-}
-
-// ===== HELPERS =====
-function time(sec){
-  let m=Math.floor(sec/60)
-  let s=Math.round(sec%60)
-  return m+":"+(s<10?"0":"")+s
-}
+function secToTime(sec){var m=Math.floor(sec/60),s=Math.round(sec%60);return m+':'+(s<10?'0':'')+s;}
+function finishSeconds(r){return r.finish==='DNF'?99999:r.splits.reduce((a,b)=>a+b,0);}
+function bandClass(b){return b==='A'?'bandA':b==='B'?'bandB':b==='C'?'bandC':b==='D'?'bandD':'bandDNF';}
+function pillClass(b){return b==='A'?'good':b==='B'?'blue':b==='C'?'warn':b==='D'?'bad':'grey';}
+function avg(arr){return arr.reduce((a,b)=>a+b,0)/arr.length;}
+function sd(arr){var m=avg(arr);return Math.sqrt(arr.reduce((a,b)=>a+Math.pow(b-m,2),0)/arr.length);}
 
 function strategy(r){
-  let first=r.splits[0]
-  let last=r.splits[5]
-  
-  if(Math.abs(first-last)<3) return "Even pace"
-  if(last<first) return "Fast finish"
-  return "Fast start"
+ if(r.finish==='DNF')return['Incomplete','The student did not complete all laps.'];
+ var first=r.splits[0],last=r.splits[r.splits.length-1],m=avg(r.splits);
+ if(Math.abs(first-last)<=3 && sd(r.splits)<=2.5)return['Even pace','Lap times stayed very close.'];
+ if(last<first-5)return['Slow start, fast finish','Started slower and finished faster.'];
+ if(first<m-5 && last>m+5)return['Fast start, slower finish','Started faster than could be maintained.'];
+ return['Changing pace','Lap times changed during the run.'];
+}
+function splitChange(r){
+ if(r.finish==='DNF')return['—','Not enough complete data.'];
+ var v=sd(r.splits);
+ if(v<=2.5)return['Small','Very consistent splits.'];
+ if(v<=6)return['Moderate','Some changes between laps.'];
+ if(v<=11)return['Large','Clear pacing changes.'];
+ return['Very large','Pacing changed a lot.'];
 }
 
-// ===== TABLE =====
-let tbody=document.querySelector("#table tbody")
+function renderFeedbackClass(){
+ document.getElementById('feedbackBox').innerHTML=
+ `<div class="check"><div class="dot">1</div><div><b>Pacing consistency</b><span>Banding is based on how even the lap splits are, not who finished fastest.</span></div></div>
+ <div class="check"><div class="dot">2</div><div><b>Start control</b><span>Some runners started faster than they could hold. This made the middle and final laps slower.</span></div></div>
+ <div class="check"><div class="dot">3</div><div><b>Positive pacing examples</b><span>A few runners started slower and finished faster. This shows better control near the end.</span></div></div>
+ <div class="check"><div class="dot">4</div><div><b>Next focus</b><span>Aim for lap times that stay close together, then gradually improve speed.</span></div></div>`;
 
-runners.sort((a,b)=>a.total-b.total)
+ document.getElementById('questionsBox').innerHTML=
+ `<div class="check"><div class="dot">?</div><div><b>Looking at the class graph, what happens when many runners start too fast?</b><span><b>Expected responses:</b> Later laps become slower • The line moves higher • It becomes harder to finish strongly</span></div></div>
+ <div class="check"><div class="dot">?</div><div><b>What would a better pacing plan look like?</b><span><b>Expected responses:</b> Start at a pace you can hold • Keep middle laps close • Finish steady or slightly faster</span></div></div>`;
 
-runners.forEach((r,i)=>{
-  let tr=document.createElement("tr")
-  
-  let band="C"
-  let sd=Math.sqrt(r.splits.map(x=>x-r.splits.reduce((a,b)=>a+b)/6).reduce((a,b)=>a+b*b)/6)
-  
-  if(sd<2.5) band="A"
-  else if(sd<5) band="B"
-  else if(sd<10) band="C"
-  else band="D"
-  
-  tr.innerHTML=`
-  <td>${i+1}</td>
-  <td>${r.id}</td>
-  <td>${time(r.total)}</td>
-  <td>${band}</td>
-  `
-  
-  tr.onclick=()=>selectRunner(r)
-  
-  tbody.appendChild(tr)
-})
-
-// ===== GRAPHS =====
-function drawGraph(svg, data, highlight){
-  svg.innerHTML=""
-  
-  let w=600,h=200
-  let max=160,min=60
-  
-  data.forEach(r=>{
-    let path=""
-    r.splits.forEach((s,i)=>{
-      let x=50 + i*80
-      let y=20 + ((s-min)/(max-min))*150
-      
-      path += (i===0?"M":"L")+x+","+y
-    })
-    
-    let p=document.createElementNS("http://www.w3.org/2000/svg","path")
-    p.setAttribute("d",path)
-    p.setAttribute("fill","none")
-    p.setAttribute("stroke", highlight===r ? "red" : "#999")
-    p.setAttribute("stroke-width", highlight===r ? "3" : "1")
-    
-    svg.appendChild(p)
-  })
+ document.getElementById('mainTakeaway').textContent=
+ 'The group showed mixed pacing. Some runners started too fast and slowed down, while some started slower and finished faster. The next focus is to choose a pace that can be held across all laps.';
 }
 
-drawGraph(document.getElementById("allGraph"), runners)
-
-// ===== SELECT =====
-function selectRunner(r){
-  document.getElementById("sid").textContent=r.id
-  document.getElementById("stime").textContent=time(r.total)
-  document.getElementById("strategy").textContent=strategy(r)
-  
-  drawGraph(document.getElementById("selectedGraph"), [r], r)
+function drawGraph(svg,runs,selectedId){
+ var W=760,H=Number(svg.getAttribute('height'))||300,left=60,right=720,top=25,bottom=H-50,laps=6;
+ var all=[]; runs.forEach(r=>all=all.concat(r.splits));
+ var min=90,max=190;
+ var xs=[]; for(var i=0;i<laps;i++)xs.push(left+((right-left)/(laps-1))*i);
+ function y(sec){return top+((sec-min)/(max-min))*(bottom-top);}
+ var html='<rect width="'+W+'" height="'+H+'" fill="#fff"/><rect x="'+left+'" y="'+top+'" width="'+(right-left)+'" height="'+(bottom-top)+'" fill="rgba(1,88,113,.03)" stroke="#dbe4ec"/>';
+ [100,120,140,160,180].forEach(sec=>{var yy=y(sec);html+='<line x1="'+left+'" y1="'+yy+'" x2="'+right+'" y2="'+yy+'" stroke="#dbe4ec"/><text x="18" y="'+(yy+4)+'" font-size="12" fill="#64748b">'+secToTime(sec)+'</text>';});
+ xs.forEach((x,i)=>{html+='<line x1="'+x+'" y1="'+top+'" x2="'+x+'" y2="'+bottom+'" stroke="#edf2f7"/><text x="'+(x-18)+'" y="'+(H-18)+'" font-size="12" fill="#64748b">Lap '+(i+1)+'</text>';});
+ var colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
+ runs.forEach(r=>{
+  var pts=r.splits.map((sec,i)=>xs[i]+','+y(sec)).join(' ');
+  html+='<polyline fill="none" stroke="'+colors[r.band]+'" stroke-width="'+(selectedId===r.id?4:2)+'" opacity="'+(selectedId?(selectedId===r.id?1:.18):.38)+'" points="'+pts+'"/>';
+ });
+ svg.innerHTML=html;
 }
 
+function renderLeaderboards(selectedId){
+ var sorted=runners.slice().sort((a,b)=>finishSeconds(a)-finishSeconds(b));
+ ['leaderBodyClass','leaderBodyStudent'].forEach(id=>{
+  var body=document.getElementById(id); body.innerHTML=''; var pos=0;
+  sorted.forEach(r=>{
+    if(r.finish!=='DNF')pos++;
+    var tr=document.createElement('tr');
+    tr.className=bandClass(r.band)+(selectedId===r.id?' selected':'');
+    tr.innerHTML='<td>'+(r.finish==='DNF'?'—':pos)+'</td><td>'+r.id+'</td><td>'+r.finish+'</td><td>'+r.band+'</td>';
+    tr.onclick=function(){selectStudent(r.id,true);};
+    body.appendChild(tr);
+  });
+ });
+}
+
+function selectStudent(id,scroll){
+ var r=runners.find(x=>x.id===id);
+ document.getElementById('viewSel').value=id;
+ document.getElementById('modePill').textContent='Student #'+id;
+ document.getElementById('modePill').className='pill '+pillClass(r.band);
+ document.getElementById('mainTitle').textContent='Student #'+id+' Feedback';
+
+ document.getElementById('overview1').textContent=r.finish;
+ document.getElementById('overview1Text').textContent='Finish time';
+ document.getElementById('overview2').textContent=r.band;
+ document.getElementById('overview2Text').textContent='Pacing band based on split consistency';
+ document.getElementById('overview3').textContent=strategy(r)[0];
+ document.getElementById('overview3Text').textContent=strategy(r)[1];
+ document.getElementById('overview4').textContent=splitChange(r)[0];
+ document.getElementById('overview4Text').textContent=splitChange(r)[1];
+
+ document.getElementById('studentBandPill').textContent=r.band==='DNF'?'DNF':'Band '+r.band;
+ document.getElementById('studentBandPill').className='pill '+pillClass(r.band);
+ document.getElementById('studentNo').textContent='#'+r.id;
+ document.getElementById('studentFinish').textContent='Finish: '+r.finish;
+ document.getElementById('strategyType').textContent=strategy(r)[0];
+ document.getElementById('strategyHint').textContent=strategy(r)[1];
+ document.getElementById('splitVar').textContent=splitChange(r)[0];
+ document.getElementById('splitVarHint').textContent=splitChange(r)[1];
+
+ document.getElementById('feedbackBox').innerHTML=
+ `<div class="check"><div class="dot">1</div><div><b>Start control</b><span>${strategy(r)[1]}</span></div></div>
+ <div class="check"><div class="dot">2</div><div><b>Split changes</b><span>${splitChange(r)[1]}</span></div></div>
+ <div class="check"><div class="dot">3</div><div><b>Next focus</b><span>${r.band==='A'?'Keep this even pattern while slowly improving speed.':'Reduce big changes between laps.'}</span></div></div>`;
+
+ document.getElementById('questionsBox').innerHTML=
+ `<div class="check"><div class="dot">?</div><div><b>Which lap changed the most?</b><span><b>Expected responses:</b> Look for the biggest jump • Look for where the line rises most</span></div></div>
+ <div class="check"><div class="dot">?</div><div><b>What can you do to keep the next run more even?</b><span><b>Expected responses:</b> Control the first lap • Focus on steady breathing • Keep each lap close in time</span></div></div>`;
+
+ document.getElementById('mainTakeaway').textContent=
+ r.band==='A'?'Good pacing control. Next step: keep this even pattern while slowly improving speed.':
+ r.finish==='DNF'?'Main focus: complete all 6 laps first, then improve pacing.':
+ 'Main focus: reduce big changes between laps.';
+
+ document.getElementById('reflectionBox').innerHTML=
+ ['How does your body feel right now?','On a scale of 1-10, what is your effort level?','Where do you feel the most tension or fatigue?','How is your breathing? Can you hold a conversation?','Is the pace feeling forced or smooth?','What went well on this run?','What was the hardest part of today’s run, and why?','What did you learn about your endurance today?']
+ .map((q,i)=>'<div class="check"><div class="dot">'+(i+1)+'</div><div><b>'+q+'</b></div></div>').join('');
+
+ drawGraph(document.getElementById('selectedGraph'),[r],r.id);
+ drawGraph(document.getElementById('allGraph'),runners,r.id);
+ renderLeaderboards(r.id);
+
+ if(scroll)document.getElementById('studentCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function setClass(){
+ document.getElementById('viewSel').value='__group__';
+ document.getElementById('mainTitle').textContent='Whole-Class Feedback';
+ document.getElementById('modePill').textContent='Class';
+ document.getElementById('modePill').className='pill blue';
+
+ document.getElementById('overview1').textContent='32/36';
+ document.getElementById('overview1Text').textContent='32 finished, 4 DNF';
+ document.getElementById('overview2').textContent='Mixed';
+ document.getElementById('overview2Text').textContent='Different pacing styles across the group';
+ document.getElementById('overview3').textContent='Fast start';
+ document.getElementById('overview3Text').textContent='14 runners showed fast start, slower finish';
+ document.getElementById('overview4').textContent='Some lift';
+ document.getElementById('overview4Text').textContent='6 runners started slower and finished faster';
+
+ renderFeedbackClass();
+ var avgSplits=[];
+ for(var i=0;i<6;i++){
+   var vals=runners.filter(r=>r.finish!=='DNF'&&r.splits[i]).map(r=>r.splits[i]);
+   avgSplits.push(avg(vals));
+ }
+ drawGraph(document.getElementById('selectedGraph'),[{id:'avg',band:'B',splits:avgSplits}],null);
+ drawGraph(document.getElementById('allGraph'),runners,null);
+ renderLeaderboards(null);
+}
+
+function buildSelect(){
+ var sel=document.getElementById('viewSel');
+ sel.innerHTML='<option value="__group__">Whole Class</option>';
+ runners.slice().sort((a,b)=>a.id-b.id).forEach(r=>{
+   var o=document.createElement('option');
+   o.value=r.id; o.textContent='Student #'+r.id;
+   sel.appendChild(o);
+ });
+ sel.onchange=function(){sel.value==='__group__'?setClass():selectStudent(Number(sel.value),true);}
+}
+
+buildSelect();
+setClass();
+})();
 </script>
-
 </body>
 </html>
