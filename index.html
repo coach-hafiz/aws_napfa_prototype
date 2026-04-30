@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>TopCodes Lap Counter</title>
+<title>Smart Run Feedback (SRF)</title>
 <style>
 :root{
   --accent:#015871;
@@ -21,7 +21,6 @@ body{
 
 .app{ display:grid; min-height:100vh; }
 
-/* Portrait */
 @media (orientation:portrait){
   .app{
     grid-template-rows: 62vh 1fr;
@@ -34,7 +33,6 @@ body{
   .bottom{ grid-area: bottom; }
 }
 
-/* Landscape */
 @media (orientation:landscape){
   .app{
     grid-template-columns: 1.15fr 0.85fr;
@@ -60,7 +58,6 @@ body{
   touch-action:none;
 }
 
-/* Unmirror the TopCodes-created video */
 #view-video{
   transform:none !important;
   -webkit-transform:none !important;
@@ -181,7 +178,7 @@ tr.done{ background:#e9f6ec }
 <body>
 <div class="app">
   <section class="top">
-    <canvas id="view" aria-label="Camera view with overlay and start line"></canvas>
+    <canvas id="view" aria-label="Camera view with TopCodes detection zone"></canvas>
 
     <div class="controls">
       <div class="controls-row">
@@ -198,7 +195,7 @@ tr.done{ background:#e9f6ec }
 
         <span class="spacer"></span>
         <span style="font-size:11px;color:#555">
-          Aim TopCodes so they cross the red line.
+          Smart Run Feedback (SRF): keep TopCodes inside the red zone.
         </span>
       </div>
 
@@ -231,7 +228,7 @@ tr.done{ background:#e9f6ec }
       </table>
     </div>
     <div class="footerBar">
-      • Use printed TopCodes (IDs 1–20 via mapping) • Good lighting improves scans • Tags can be angled, not perfectly flat
+      • Smart Run Feedback (SRF) • Use printed TopCodes IDs 1–20 • TopCodes must enter the red detection zone • Good lighting improves scans
     </div>
   </section>
 </div>
@@ -264,7 +261,7 @@ tr.done{ background:#e9f6ec }
   var scanningStarted = false;
   var startingCamera = false;
 
-  var facingMode = 'environment'; // rear by default
+  var facingMode = 'environment';
 
   function updateSwapLabel(){
     swapBtn.textContent = 'Switch: ' + (facingMode === 'environment' ? 'Back' : 'Front');
@@ -342,7 +339,8 @@ tr.done{ background:#e9f6ec }
   var counting  = false;
   var startTime = 0;
   var timerTick = null;
-  var lineY     = null;
+  var zoneTop   = null;
+  var zoneBottom = null;
   var COOLDOWN  = 1200;
 
   var runners = {};
@@ -356,7 +354,7 @@ tr.done{ background:#e9f6ec }
         lastTs: 0,
         finished: false,
         totalLaps: total,
-        lastSide: null
+        inZone: false
       };
 
       var tr = document.createElement('tr');
@@ -464,22 +462,47 @@ tr.done{ background:#e9f6ec }
     var v = document.getElementById('view-video');
     if (!v) return;
 
-    // Rear camera should not be mirrored
-    if (facingMode === 'environment'){
-      v.style.transform = 'none';
-      v.style.webkitTransform = 'none';
-    } else {
-      // Keep front camera unmirrored too for consistency
-      v.style.transform = 'none';
-      v.style.webkitTransform = 'none';
-    }
-
+    v.style.transform = 'none';
+    v.style.webkitTransform = 'none';
     v.playsInline = true;
     v.muted = true;
+
     try{
       var p = v.play();
       if (p && typeof p.catch === 'function') p.catch(function(){});
     }catch(e){}
+  }
+
+  function drawDetectionZone(w, h){
+    zoneTop = Math.round(h * 0.43);
+    zoneBottom = Math.round(h * 0.57);
+
+    var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
+    lineColor = (lineColor || 'red').trim();
+
+    ctx.save();
+
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.10)';
+    ctx.fillRect(0, zoneTop, w, zoneBottom - zoneTop);
+
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = Math.max(3, h / 220);
+
+    ctx.beginPath();
+    ctx.moveTo(0, zoneTop);
+    ctx.lineTo(w, zoneTop);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, zoneBottom);
+    ctx.lineTo(w, zoneBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.font = Math.max(12, Math.round(h / 35)) + 'px system-ui';
+    ctx.fillText('READ ZONE', 12, zoneTop - 8);
+
+    ctx.restore();
   }
 
   function handleFrame(jsonString){
@@ -494,18 +517,7 @@ tr.done{ background:#e9f6ec }
     var w = canvas.width || 640;
     var h = canvas.height || 480;
 
-    lineY = Math.round(h * 0.5);
-    var deadband = Math.max(16, Math.round(h * 0.10));
-
-    ctx.save();
-    var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
-    ctx.strokeStyle = (lineColor || 'red').trim();
-    ctx.lineWidth = Math.max(3, h / 220);
-    ctx.beginPath();
-    ctx.moveTo(0, lineY);
-    ctx.lineTo(w, lineY);
-    ctx.stroke();
-    ctx.restore();
+    drawDetectionZone(w, h);
 
     if (!counting) return;
 
@@ -515,22 +527,37 @@ tr.done{ background:#e9f6ec }
       if (!runnerID) continue;
 
       ensureRunner(runnerID);
+
       var key = String(runnerID);
       var r = runners[key];
       if (!r || r.finished) continue;
 
       var cy = tc.y;
-      var dy = cy - lineY;
-      var side = 0;
+      var insideZone = cy >= zoneTop && cy <= zoneBottom;
 
-      if (dy < -deadband) side = -1;
-      else if (dy > deadband) side = 1;
-
-      if (r.lastSide === -1 && side === 1){
+      if (insideZone && !r.inZone){
         countLap(runnerID);
       }
 
-      if (side !== 0) r.lastSide = side;
+      r.inZone = insideZone;
+    }
+
+    for (var id in runners){
+      if (runners.hasOwnProperty(id)){
+        var stillSeen = false;
+
+        for (var j=0;j<tcodes.length;j++){
+          var codeRunnerID = mapCode(tcodes[j].code);
+          if (String(codeRunnerID) === String(id)){
+            stillSeen = true;
+            break;
+          }
+        }
+
+        if (!stillSeen){
+          runners[id].inZone = false;
+        }
+      }
     }
   }
 
@@ -624,7 +651,7 @@ tr.done{ background:#e9f6ec }
         exportBtn.disabled  = true;
         summaryBtn.disabled = true;
 
-        setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') + '). Aim TopCodes so they cross the red line. Tap "Start" to begin.');
+        setStatus('Camera active (' + (facingMode === 'environment' ? 'Back' : 'Front') + '). Keep TopCodes inside the red detection zone. Tap "Start" to begin.');
       }
     }, 150);
   }
@@ -682,7 +709,7 @@ tr.done{ background:#e9f6ec }
     exportBtn.disabled = true;
     summaryBtn.disabled = true;
 
-    setStatus('Counting… TopCodes must CROSS the line (above → below) to reduce laps left.');
+    setStatus('Counting… TopCodes will be counted when they enter the red detection zone.');
   });
 
   stopBtn.addEventListener('click', function(){
@@ -772,7 +799,7 @@ tr.done{ background:#e9f6ec }
     var encoded = encodeURIComponent(csv);
     var a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encoded;
-    a.download = 'topcodes_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    a.download = 'srf_laps_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -800,6 +827,7 @@ tr.done{ background:#e9f6ec }
       createdAt: new Date().toISOString(),
       runDistanceMeters: runDistanceMeters,
       lapsConfig: parseInt(lapsSel.value, 10),
+      appName: 'Smart Run Feedback (SRF)',
       runners: runnersArr
     };
   }
@@ -829,7 +857,7 @@ tr.done{ background:#e9f6ec }
 
   resizeCanvas();
   updateLapInfo();
-  setStatus('Idle. Tap "Enable Camera". TopCodes only (no QR/barcodes). Note: Camera requires HTTPS or localhost.');
+  setStatus('Idle. Tap "Enable Camera". Smart Run Feedback (SRF) uses TopCodes only. Camera requires HTTPS or localhost.');
 })();
 </script>
 </body>
