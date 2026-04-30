@@ -424,313 +424,497 @@ footer{
 
 <script>
 (function(){
-const students=[
-{id:30,finish:'10:41',band:'A',splits:['1:47','1:46','1:47','1:47','1:47','1:47']},
-{id:17,finish:'10:49',band:'A',splits:['1:48','1:48','1:49','1:49','1:48','1:47']},
-{id:36,finish:'10:58',band:'A',splits:['1:49','1:49','1:50','1:50','1:50','1:50']},
-{id:22,finish:'11:05',band:'A',splits:['1:48','1:50','1:51','1:52','1:52','1:52']},
-{id:35,finish:'11:14',band:'A',splits:['1:50','1:51','1:52','1:53','1:54','1:54']},
-{id:15,finish:'11:22',band:'A',splits:['1:52','1:53','1:54','1:54','1:54','1:55']},
-{id:5,finish:'11:31',band:'A',splits:['1:54','1:54','1:55','1:56','1:56','1:56']},
-{id:1,finish:'11:42',band:'B',splits:['1:50','1:54','1:58','1:59','2:00','2:01']},
-{id:24,finish:'11:51',band:'B',splits:['1:52','1:56','1:59','2:00','2:01','2:03']},
-{id:27,finish:'12:03',band:'B',splits:['1:54','1:58','2:01','2:02','2:03','2:05']},
-{id:31,finish:'12:10',band:'B',splits:['1:55','1:58','2:01','2:02','2:06','2:08']},
-{id:12,finish:'12:17',band:'B',splits:['1:58','2:00','2:02','2:03','2:06','2:08']},
-{id:26,finish:'12:26',band:'B',splits:['1:58','2:01','2:04','2:05','2:08','2:10']},
-{id:19,finish:'12:34',band:'B',splits:['2:00','2:02','2:04','2:06','2:09','2:13']},
-{id:33,finish:'12:41',band:'B',splits:['2:01','2:03','2:05','2:07','2:10','2:15']},
-{id:11,finish:'12:49',band:'B',splits:['2:02','2:04','2:06','2:08','2:12','2:17']},
-{id:32,finish:'12:58',band:'C',splits:['1:56','2:03','2:10','2:11','2:18','2:20']},
-{id:34,finish:'13:09',band:'C',splits:['1:57','2:05','2:11','2:13','2:20','2:23']},
-{id:38,finish:'13:17',band:'C',splits:['2:00','2:07','2:12','2:13','2:20','2:25']},
-{id:25,finish:'13:29',band:'C',splits:['2:02','2:08','2:14','2:16','2:23','2:26']},
-{id:29,finish:'13:37',band:'C',splits:['2:03','2:09','2:15','2:17','2:24','2:29']},
-{id:4,finish:'13:48',band:'C',splits:['2:04','2:10','2:17','2:19','2:27','2:31']},
-{id:9,finish:'13:59',band:'C',splits:['2:06','2:12','2:18','2:20','2:29','2:34']},
-{id:16,finish:'14:12',band:'C',splits:['2:08','2:14','2:21','2:23','2:31','2:35']},
-{id:18,finish:'14:24',band:'C',splits:['2:10','2:15','2:22','2:24','2:34','2:39']},
-{id:14,finish:'14:33',band:'C',splits:['2:12','2:16','2:23','2:27','2:35','2:40']},
-{id:3,finish:'14:49',band:'D',splits:['2:04','2:14','2:25','2:31','2:44','2:51']},
-{id:13,finish:'15:02',band:'D',splits:['2:06','2:17','2:28','2:34','2:46','2:51']},
-{id:6,finish:'15:16',band:'D',splits:['2:08','2:19','2:31','2:37','2:49','2:52']},
-{id:7,finish:'15:27',band:'D',splits:['2:09','2:21','2:33','2:39','2:50','2:55']},
-{id:8,finish:'15:43',band:'D',splits:['2:11','2:24','2:36','2:42','2:53','2:57']},
-{id:10,finish:'15:58',band:'D',splits:['2:12','2:26','2:39','2:44','2:57','3:00']},
-{id:21,finish:'DNF',band:'DNF',splits:['2:11','2:24','2:41','stopped','','']},
-{id:23,finish:'DNF',band:'DNF',splits:['2:15','2:31','2:48','stopped','','']},
-{id:28,finish:'DNF',band:'DNF',splits:['2:18','2:36','2:55','stopped','','']},
-{id:20,finish:'DNF',band:'DNF',splits:['2:20','2:39','3:01','stopped','','']}
-];
+  const baseStudents = [
+    ['10:41',['1:47','1:46','1:47','1:47','1:47','1:47']],
+    ['10:49',['1:48','1:48','1:49','1:49','1:48','1:47']],
+    ['10:58',['1:49','1:49','1:50','1:50','1:50','1:50']],
+    ['11:05',['1:48','1:50','1:51','1:52','1:52','1:52']],
+    ['11:14',['1:50','1:51','1:52','1:53','1:54','1:54']],
+    ['11:22',['1:52','1:53','1:54','1:54','1:54','1:55']],
+    ['11:31',['1:54','1:54','1:55','1:56','1:56','1:56']],
+    ['11:42',['1:50','1:54','1:58','1:59','2:00','2:01']],
+    ['11:51',['1:52','1:56','1:59','2:00','2:01','2:03']],
+    ['12:03',['1:54','1:58','2:01','2:02','2:03','2:05']],
+    ['12:10',['1:55','1:58','2:01','2:02','2:06','2:08']],
+    ['12:17',['1:58','2:00','2:02','2:03','2:06','2:08']],
+    ['12:26',['1:58','2:01','2:04','2:05','2:08','2:10']],
+    ['12:34',['2:00','2:02','2:04','2:06','2:09','2:13']],
+    ['12:41',['2:01','2:03','2:05','2:07','2:10','2:15']],
+    ['12:49',['2:02','2:04','2:06','2:08','2:12','2:17']],
+    ['12:58',['1:56','2:03','2:10','2:11','2:18','2:20']],
+    ['13:09',['1:57','2:05','2:11','2:13','2:20','2:23']],
+    ['13:17',['2:00','2:07','2:12','2:13','2:20','2:25']],
+    ['13:29',['2:02','2:08','2:14','2:16','2:23','2:26']],
+    ['13:37',['2:03','2:09','2:15','2:17','2:24','2:29']],
+    ['13:48',['2:04','2:10','2:17','2:19','2:27','2:31']],
+    ['13:59',['2:06','2:12','2:18','2:20','2:29','2:34']],
+    ['14:12',['2:08','2:14','2:21','2:23','2:31','2:35']],
+    ['14:24',['2:10','2:15','2:22','2:24','2:34','2:39']],
+    ['14:33',['2:12','2:16','2:23','2:27','2:35','2:40']],
+    ['14:49',['2:04','2:14','2:25','2:31','2:44','2:51']],
+    ['15:02',['2:06','2:17','2:28','2:34','2:46','2:51']],
+    ['15:16',['2:08','2:19','2:31','2:37','2:49','2:52']],
+    ['15:27',['2:09','2:21','2:33','2:39','2:50','2:55']],
+    ['15:43',['2:11','2:24','2:36','2:42','2:53','2:57']],
+    ['15:58',['2:12','2:26','2:39','2:44','2:57','3:00']],
+    ['DNF',['2:11','2:24','2:41','stopped','','']],
+    ['DNF',['2:15','2:31','2:48','stopped','','']],
+    ['DNF',['2:18','2:36','2:55','stopped','','']],
+    ['DNF',['2:20','2:39','3:01','stopped','','']]
+  ];
 
-const viewSel=document.getElementById('viewSel');
-const mainTitle=document.getElementById('mainTitle');
-const mainHint=document.getElementById('mainHint');
-const modePill=document.getElementById('modePill');
-const overview1=document.getElementById('overview1');
-const overview1Text=document.getElementById('overview1Text');
-const overview2=document.getElementById('overview2');
-const overview3=document.getElementById('overview3');
-const overview3Text=document.getElementById('overview3Text');
-const overview4=document.getElementById('overview4');
-const overview4Text=document.getElementById('overview4Text');
-const mainTakeaway=document.getElementById('mainTakeaway');
-const feedbackBox=document.getElementById('feedbackBox');
-const questionsBox=document.getElementById('questionsBox');
-const selectedGraph=document.getElementById('selectedGraph');
-const selectedGraphFooter=document.getElementById('selectedGraphFooter');
-const allGraph=document.getElementById('allGraph');
-const studentBandPill=document.getElementById('studentBandPill');
-const studentNo=document.getElementById('studentNo');
-const studentFinish=document.getElementById('studentFinish');
-const strategyType=document.getElementById('strategyType');
-const strategyHint=document.getElementById('strategyHint');
-const splitVar=document.getElementById('splitVar');
-const splitVarHint=document.getElementById('splitVarHint');
-const leaderBody=document.getElementById('leaderBody');
+  // Randomised runner IDs
+  const randomIds = [42, 7, 31, 18, 55, 63, 12, 89, 24, 3, 71, 16, 48, 95, 27, 60, 11, 84, 36, 5, 77, 22, 69, 14, 91, 30, 52, 8, 73, 19, 66, 40, 28, 97, 34, 58];
 
-function timeToSec(t){
-  if(!t||t==='DNF'||t==='stopped')return null;
-  const p=t.split(':'); return Number(p[0])*60+Number(p[1]);
-}
-function secToTime(s){
-  const m=Math.floor(s/60), ss=Math.round(s%60);
-  return m+':' +(ss<10?'0':'')+ss;
-}
-function nums(s){return s.splits.map(timeToSec).filter(v=>v!==null);}
-function mean(a){const b=a.filter(x=>typeof x==='number'&&isFinite(x));return b.length?b.reduce((x,y)=>x+y,0)/b.length:null;}
-function sd(a){const b=a.filter(x=>typeof x==='number'&&isFinite(x));if(b.length<2)return 0;const m=mean(b);return Math.sqrt(b.reduce((x,y)=>x+Math.pow(y-m,2),0)/b.length);}
-function median(a){const b=a.slice().sort((x,y)=>x-y);if(!b.length)return null;const mid=Math.floor(b.length/2);return b.length%2?b[mid]:(b[mid-1]+b[mid])/2;}
-function bandClass(b){return b==='A'?'bandA':b==='B'?'bandB':b==='C'?'bandC':b==='D'?'bandD':'bandDNF';}
-function pillClass(b){return b==='A'?'good':b==='B'?'blue':b==='C'?'warn':b==='D'?'bad':'grey';}
+  const students = baseStudents.map((s,i)=>({
+    id: randomIds[i],
+    finish: s[0],
+    splits: s[1],
+    band: ''
+  }));
 
-function strategy(s){
-  if(s.band==='DNF')return ['Incomplete','Student did not complete the run. Focus first on completing all 6 laps.'];
-  const a=nums(s), first=a[0], last=a[a.length-1], av=mean(a);
-  if(Math.abs(last-first)<=3&&sd(a)<=2.5)return ['Even pace','Lap times stayed close together.'];
-  if(first<av-5&&last>av+5)return ['Fast start, slower finish','Started faster than the pace that could be maintained.'];
-  if(last<first-3)return ['Stronger finish','Final lap was faster than the first lap.'];
-  return ['Changing pace','Lap times changed quite a bit during the run.'];
-}
-function splitChange(s){
-  if(s.band==='DNF')return ['—','Not enough complete data.'];
-  const v=sd(nums(s));
-  if(v<=2.5)return ['Small','Lap times were very close.'];
-  if(v<=6)return ['Moderate','Some lap times changed, but still manageable.'];
-  return ['Large','Lap times changed a lot. Pacing needs work.'];
-}
-function startFeedback(s){
-  if(s.band==='DNF')return 'Start can be reviewed, but full pacing cannot be judged because the run was not completed.';
-  const a=nums(s), av=mean(a);
-  if(a[0]<av-6)return 'The first lap was too fast compared with the rest of the run.';
-  if(a[0]>av+4)return 'The first lap was cautious compared with the rest of the run.';
-  return 'The first lap was close to the student’s average pace.';
-}
-function middleFeedback(s){
-  if(s.band==='DNF')return 'The student did not maintain the run until the end.';
-  const a=nums(s), early=mean([a[0],a[1]]), mid=mean([a[2],a[3]]);
-  if(mid-early>=10)return 'There was a clear slowdown in the middle laps.';
-  if(mid-early>=5)return 'There was some slowdown in the middle laps.';
-  return 'Middle laps were maintained quite well.';
-}
-function finishFeedback(s){
-  if(s.band==='DNF')return 'No final lap data available.';
-  const a=nums(s);
-  if(a[5]<=a[4]-3)return 'The student finished stronger in the final lap.';
-  if(Math.abs(a[5]-a[4])<=2)return 'The final lap was steady.';
-  return 'The student continued to slow down in the final lap.';
-}
-function takeaway(s){
-  if(s.band==='DNF')return 'Main focus: complete all 6 laps first, then work on pacing.';
-  const st=strategy(s)[0], ch=splitChange(s)[0];
-  if(st==='Even pace')return 'Good pacing control. Next step: keep the same steady pattern at a slightly faster pace.';
-  if(st==='Fast start, slower finish')return 'Main focus: start slightly slower so the pace can be held for all 6 laps.';
-  if(st==='Stronger finish')return 'Good finish. Next step: start a little more confidently while still keeping control.';
-  if(ch==='Large')return 'Main focus: reduce big changes between laps.';
-  return 'Main focus: hold the middle laps better.';
-}
-function classQuestions(){
-  return [
-    'Why can starting too fast make the middle and final laps slower?',
-    'What would a good pacing plan look like for 6 laps?'
-  ];
-}
-function studentQuestions(s){
-  if(s.band==='DNF')return [
-    'What pace would help this student complete all 6 laps?',
-    'Which lap shows the first sign that the pace became hard to maintain?'
-  ];
-  const st=strategy(s)[0];
-  if(st==='Even pace')return [
-    'What shows that this student paced the run well?',
-    'How could the student improve without losing pacing control?'
-  ];
-  if(st==='Fast start, slower finish')return [
-    'Which split shows the student may have started too fast?',
-    'What could the student change in Lap 1 to finish stronger?'
-  ];
-  return [
-    'Which lap changed the most compared with the others?',
-    'What can the student do to keep the next run more even?'
-  ];
-}
-function checkHTML(items){
-  return items.map((x,i)=>`<div class="check"><div class="dot">${i+1}</div><div><b>${x[0]}</b><span>${x[1]}</span></div></div>`).join('');
-}
-function questionsHTML(qs){
-  return qs.slice(0,2).map((q,i)=>`<div class="check"><div class="dot">?</div><div><b>Question ${i+1}</b><span>${q}</span></div></div>`).join('');
-}
+  const viewSel=document.getElementById('viewSel');
+  const mainTitle=document.getElementById('mainTitle');
+  const mainHint=document.getElementById('mainHint');
+  const modePill=document.getElementById('modePill');
+  const overview1=document.getElementById('overview1');
+  const overview1Text=document.getElementById('overview1Text');
+  const overview2=document.getElementById('overview2');
+  const overview3=document.getElementById('overview3');
+  const overview3Text=document.getElementById('overview3Text');
+  const overview4=document.getElementById('overview4');
+  const overview4Text=document.getElementById('overview4Text');
+  const mainTakeaway=document.getElementById('mainTakeaway');
+  const feedbackBox=document.getElementById('feedbackBox');
+  const questionsBox=document.getElementById('questionsBox');
+  const selectedGraph=document.getElementById('selectedGraph');
+  const selectedGraphFooter=document.getElementById('selectedGraphFooter');
+  const allGraph=document.getElementById('allGraph');
+  const studentBandPill=document.getElementById('studentBandPill');
+  const studentNo=document.getElementById('studentNo');
+  const studentFinish=document.getElementById('studentFinish');
+  const strategyType=document.getElementById('strategyType');
+  const strategyHint=document.getElementById('strategyHint');
+  const splitVar=document.getElementById('splitVar');
+  const splitVarHint=document.getElementById('splitVarHint');
+  const leaderBody=document.getElementById('leaderBody');
 
-function graph(svg, lines, titleMode){
-  const W=760,H=230,left=60,right=720,top=25,bottom=180;
-  const min=100,max=185;
-  const xs=[115,225,335,445,555,665];
-  function y(sec){return top+((sec-min)/(max-min))*(bottom-top);}
-  let html=`<rect width="${W}" height="${H}" fill="#fff"/>
-  <rect x="${left}" y="${top}" width="${right-left}" height="${bottom-top}" fill="rgba(1,88,113,.03)" stroke="#dbe4ec"/>`;
-  [110,130,150,170].forEach(sec=>{
-    const yy=y(sec);
-    html+=`<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#dbe4ec"/>
-    <text x="18" y="${yy+4}" font-size="12" fill="#64748b">${secToTime(sec)}</text>`;
-  });
-  xs.forEach((x,i)=>{
-    html+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="#edf2f7"/>
-    <text x="${x-18}" y="205" font-size="12" fill="#64748b">Lap ${i+1}</text>`;
-  });
-  lines.forEach(obj=>{
-    const pts=obj.splits.map(timeToSec).map((sec,i)=>sec===null?null:`${xs[i]},${y(sec)}`).filter(Boolean).join(' ');
-    if(pts){
-      html+=`<polyline fill="none" stroke="${obj.color}" stroke-width="${obj.width||2}" opacity="${obj.opacity||0.35}" points="${pts}"/>`;
+  function timeToSec(t){
+    if(!t||t==='DNF'||t==='stopped')return null;
+    const p=t.split(':');
+    return Number(p[0])*60+Number(p[1]);
+  }
+
+  function secToTime(s){
+    const m=Math.floor(s/60);
+    const ss=Math.round(s%60);
+    return m+':' +(ss<10?'0':'')+ss;
+  }
+
+  function nums(s){
+    return s.splits.map(timeToSec).filter(v=>v!==null);
+  }
+
+  function mean(a){
+    const b=a.filter(x=>typeof x==='number'&&isFinite(x));
+    return b.length?b.reduce((x,y)=>x+y,0)/b.length:null;
+  }
+
+  function sd(a){
+    const b=a.filter(x=>typeof x==='number'&&isFinite(x));
+    if(b.length<2)return 0;
+    const m=mean(b);
+    return Math.sqrt(b.reduce((x,y)=>x+Math.pow(y-m,2),0)/b.length);
+  }
+
+  function median(a){
+    const b=a.slice().sort((x,y)=>x-y);
+    if(!b.length)return null;
+    const mid=Math.floor(b.length/2);
+    return b.length%2?b[mid]:(b[mid-1]+b[mid])/2;
+  }
+
+  // Banding is now based on pacing consistency, not finish time
+  function consistencyBand(s){
+    if(s.finish==='DNF') return 'DNF';
+    const v=sd(nums(s));
+    if(v<=2.5)return 'A';
+    if(v<=6)return 'B';
+    if(v<=10)return 'C';
+    return 'D';
+  }
+
+  students.forEach(s=>s.band=consistencyBand(s));
+
+  function bandClass(b){
+    return b==='A'?'bandA':b==='B'?'bandB':b==='C'?'bandC':b==='D'?'bandD':'bandDNF';
+  }
+
+  function pillClass(b){
+    return b==='A'?'good':b==='B'?'blue':b==='C'?'warn':b==='D'?'bad':'grey';
+  }
+
+  function strategy(s){
+    if(s.band==='DNF')return ['Incomplete','You did not complete all 6 laps yet. First goal: finish the full run.'];
+    const a=nums(s), first=a[0], last=a[a.length-1], av=mean(a);
+    if(Math.abs(last-first)<=3&&sd(a)<=2.5)return ['Even pace','Your lap times stayed close together.'];
+    if(first<av-5&&last>av+5)return ['Fast start, slower finish','You started faster than the pace you could hold.'];
+    if(last<first-3)return ['Stronger finish','Your final lap was faster than your first lap.'];
+    return ['Changing pace','Your lap times changed quite a bit.'];
+  }
+
+  function splitChange(s){
+    if(s.band==='DNF')return ['—','Not enough complete data.'];
+    const v=sd(nums(s));
+    if(v<=2.5)return ['Small','Your lap times were very close.'];
+    if(v<=6)return ['Moderate','Your lap times changed a little.'];
+    if(v<=10)return ['Large','Your lap times changed quite a bit.'];
+    return ['Very large','Your lap times changed a lot.'];
+  }
+
+  function startFeedback(s){
+    if(s.band==='DNF')return 'You started the run, but we need a full 6 laps to understand your pacing better.';
+    const a=nums(s), av=mean(a);
+    if(a[0]<av-6)return 'Your first lap was much faster than your average pace. Try starting more calmly.';
+    if(a[0]>av+4)return 'Your first lap was slower than your average pace. You may be able to start slightly more confidently.';
+    return 'Your first lap was close to your average pace. This is a good start control.';
+  }
+
+  function middleFeedback(s){
+    if(s.band==='DNF')return 'You did not maintain the run until the end. Aim to complete all 6 laps first.';
+    const a=nums(s), early=mean([a[0],a[1]]), mid=mean([a[2],a[3]]);
+    if(mid-early>=10)return 'Your middle laps slowed down clearly. Try to keep Laps 3 and 4 closer to your first two laps.';
+    if(mid-early>=5)return 'Your middle laps slowed down a little. Try to keep your rhythm steady.';
+    return 'You maintained your middle laps quite well.';
+  }
+
+  function finishFeedback(s){
+    if(s.band==='DNF')return 'There is no final lap data because the run was not completed.';
+    const a=nums(s);
+    if(a[5]<=a[4]-3)return 'You finished stronger in the last lap. Good finishing effort.';
+    if(Math.abs(a[5]-a[4])<=2)return 'Your final lap was steady. Good control.';
+    return 'You continued to slow down in the final lap. Try saving some energy for the finish.';
+  }
+
+  function takeaway(s){
+    if(s.band==='DNF')return 'Main focus: complete all 6 laps first. Then work on pacing.';
+    const st=strategy(s)[0], ch=splitChange(s)[0];
+    if(st==='Even pace')return 'Good pacing control. Next step: keep the same steady pattern at a slightly faster pace.';
+    if(st==='Fast start, slower finish')return 'Main focus: start slightly slower so you can hold your pace for all 6 laps.';
+    if(st==='Stronger finish')return 'Good finish. Next step: start a little more confidently while staying in control.';
+    if(ch==='Very large'||ch==='Large')return 'Main focus: reduce big changes between laps.';
+    return 'Main focus: hold your pace better in the middle laps.';
+  }
+
+  function classQuestions(){
+    return [
+      {
+        q:'When you look at the class graph, what happens when many runners start too fast?',
+        r:[
+          'They slow down in the middle laps.',
+          'Their lap times become less steady.',
+          'They may find the final laps harder.',
+          'A steadier start can help them finish better.'
+        ]
+      },
+      {
+        q:'For a 6-lap 2.4 km run, what would a good pacing plan look like?',
+        r:[
+          'Start at a pace I can hold.',
+          'Keep the middle laps close to the first two laps.',
+          'Avoid a very fast first lap.',
+          'Try to finish steady or slightly stronger.'
+        ]
+      }
+    ];
+  }
+
+  function studentQuestions(s){
+    if(s.band==='DNF')return [
+      {
+        q:'Looking at your splits, where did your run become difficult to continue?',
+        r:[
+          'I slowed down before completing all 6 laps.',
+          'The middle part became harder.',
+          'I need a pace that lets me finish the full distance.',
+          'I should aim to complete all laps first.'
+        ]
+      },
+      {
+        q:'What pacing choice can help you complete all 6 laps next time?',
+        r:[
+          'Start slower and more calmly.',
+          'Keep my first two laps comfortable.',
+          'Focus on finishing before trying to run faster.',
+          'Use a steady rhythm instead of rushing early.'
+        ]
+      }
+    ];
+
+    const st=strategy(s)[0];
+
+    if(st==='Even pace')return [
+      {
+        q:'What shows that you paced your run well?',
+        r:[
+          'My lap times are close together.',
+          'I did not slow down much.',
+          'My middle laps stayed steady.',
+          'My final lap was controlled.'
+        ]
+      },
+      {
+        q:'How can you improve without losing your steady pacing?',
+        r:[
+          'Run slightly faster but keep the same rhythm.',
+          'Avoid suddenly speeding up too much.',
+          'Keep checking that each lap feels controlled.',
+          'Try to finish a little stronger.'
+        ]
+      }
+    ];
+
+    if(st==='Fast start, slower finish')return [
+      {
+        q:'Which part of your run shows that you may have started too fast?',
+        r:[
+          'My first lap was faster than my later laps.',
+          'My middle laps became slower.',
+          'My final lap was slower than the start.',
+          'My pace dropped after the early laps.'
+        ]
+      },
+      {
+        q:'What can you change in Lap 1 to help your final lap?',
+        r:[
+          'Start more calmly.',
+          'Run at a pace I can hold.',
+          'Do not chase others too early.',
+          'Save energy for the middle and final laps.'
+        ]
+      }
+    ];
+
+    return [
+      {
+        q:'Which lap changed the most compared with your other laps?',
+        r:[
+          'I can look for the lap that is much slower or faster.',
+          'That lap shows where my rhythm changed.',
+          'A big change means my pacing was less steady.',
+          'I should try to keep that lap closer to the others.'
+        ]
+      },
+      {
+        q:'What can you do to make your next run more even?',
+        r:[
+          'Use a calmer start.',
+          'Keep my middle laps steady.',
+          'Focus on rhythm instead of sudden speed changes.',
+          'Try to make each lap time closer.'
+        ]
+      }
+    ];
+  }
+
+  function checkHTML(items){
+    return items.map((x,i)=>`
+      <div class="check">
+        <div class="dot">${i+1}</div>
+        <div><b>${x[0]}</b><span>${x[1]}</span></div>
+      </div>
+    `).join('');
+  }
+
+  function questionsHTML(qs){
+    return qs.slice(0,2).map((item,i)=>`
+      <div class="check">
+        <div class="dot">?</div>
+        <div>
+          <b>Question ${i+1}: ${item.q}</b>
+          <span><b>Expected responses:</b><br>• ${item.r.join('<br>• ')}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function graph(svg, lines){
+    const W=760,H=230,left=60,right=720,top=25,bottom=180;
+    const min=100,max=185;
+    const xs=[115,225,335,445,555,665];
+
+    function y(sec){
+      return top+((sec-min)/(max-min))*(bottom-top);
     }
+
+    let html=`<rect width="${W}" height="${H}" fill="#fff"/>
+      <rect x="${left}" y="${top}" width="${right-left}" height="${bottom-top}" fill="rgba(1,88,113,.03)" stroke="#dbe4ec"/>`;
+
+    [110,130,150,170].forEach(sec=>{
+      const yy=y(sec);
+      html+=`<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#dbe4ec"/>
+      <text x="18" y="${yy+4}" font-size="12" fill="#64748b">${secToTime(sec)}</text>`;
+    });
+
+    xs.forEach((x,i)=>{
+      html+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="#edf2f7"/>
+      <text x="${x-18}" y="205" font-size="12" fill="#64748b">Lap ${i+1}</text>`;
+    });
+
+    lines.forEach(obj=>{
+      const pts=obj.splits.map(timeToSec).map((sec,i)=>sec===null?null:`${xs[i]},${y(sec)}`).filter(Boolean).join(' ');
+      if(pts){
+        html+=`<polyline fill="none" stroke="${obj.color}" stroke-width="${obj.width||2}" opacity="${obj.opacity||0.35}" points="${pts}"/>`;
+      }
+    });
+
+    svg.innerHTML=html;
+  }
+
+  function setClassView(){
+    mainTitle.textContent='Whole-Class Feedback';
+    mainHint.textContent='Simple feedback based on finish time and lap splits.';
+    modePill.textContent='Class';
+    modePill.className='pill blue';
+
+    const finishers=students.filter(s=>s.finish!=='DNF');
+    const finishSecs=finishers.map(s=>timeToSec(s.finish));
+
+    overview1.textContent=finishers.length+'/'+students.length;
+    overview1Text.textContent=finishers.length+' finished, '+(students.length-finishers.length)+' DNF';
+    overview2.textContent=secToTime(median(finishSecs));
+    overview3.textContent='Mixed';
+    overview3Text.textContent='Some steady, some uneven';
+    overview4.textContent='Mixed';
+    overview4Text.textContent='Some finished steady, others slowed';
+
+    mainTakeaway.textContent='The class completed the run reasonably well, but pacing consistency was mixed. The next focus should be starting calmly and keeping the middle laps closer together.';
+
+    feedbackBox.innerHTML=checkHTML([
+      ['Pacing consistency','Some runners kept steady lap times. Others had large changes between laps.'],
+      ['Start control','Several students started faster than they could maintain.'],
+      ['Middle laps','The middle laps are the main area to improve.'],
+      ['Finish','Some students finished strongly, while others slowed down near the end.']
+    ]);
+
+    questionsBox.innerHTML=questionsHTML(classQuestions());
+
+    const avgSplits=[0,1,2,3,4,5].map(i=>mean(finishers.map(s=>timeToSec(s.splits[i]))));
+    graph(selectedGraph,[{splits:avgSplits.map(secToTime),color:'var(--accent)',width:4,opacity:1}]);
+    selectedGraphFooter.innerHTML='<span>Class average split by lap</span><span>Rising line = slower lap</span>';
+
+    const colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
+    graph(allGraph,students.map(s=>({splits:s.splits,color:colors[s.band],width:2,opacity:s.band==='DNF'?0.22:0.42})));
+
+    studentBandPill.textContent='Select';
+    studentBandPill.className='pill grey';
+    studentNo.textContent='—';
+    studentFinish.textContent='Finish: —';
+    strategyType.textContent='—';
+    strategyHint.textContent='—';
+    splitVar.textContent='—';
+    splitVarHint.textContent='—';
+
+    renderLeaderboard(null);
+  }
+
+  function setStudentView(id){
+    const s=students.find(x=>x.id===id);
+    if(!s)return;
+
+    mainTitle.textContent='Runner #'+s.id+' Feedback';
+    mainHint.textContent='Simple feedback based on this runner’s lap splits.';
+    modePill.textContent='Runner #'+s.id;
+    modePill.className='pill '+pillClass(s.band);
+
+    overview1.textContent=s.finish;
+    overview1Text.textContent='Finish time';
+    overview2.textContent=s.band;
+    overview3.textContent=strategy(s)[0];
+    overview3Text.textContent=strategy(s)[1];
+    overview4.textContent=splitChange(s)[0];
+    overview4Text.textContent=splitChange(s)[1];
+
+    mainTakeaway.textContent=takeaway(s);
+
+    feedbackBox.innerHTML=checkHTML([
+      ['Start control',startFeedback(s)],
+      ['Middle laps',middleFeedback(s)],
+      ['Finish',finishFeedback(s)],
+      ['Next focus',takeaway(s)]
+    ]);
+
+    questionsBox.innerHTML=questionsHTML(studentQuestions(s));
+
+    graph(selectedGraph,[{splits:s.splits,color:'var(--accent)',width:4,opacity:1}]);
+    selectedGraphFooter.innerHTML='<span>Splits: '+s.splits.filter(Boolean).join(' • ')+'</span><span>Rising line = slower lap</span>';
+
+    const colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
+    graph(allGraph,students.map(x=>({splits:x.splits,color:colors[x.band],width:x.id===s.id?4:2,opacity:x.id===s.id?1:0.2})));
+
+    studentBandPill.textContent=s.band==='DNF'?'DNF':'Band '+s.band;
+    studentBandPill.className='pill '+pillClass(s.band);
+    studentNo.textContent='#'+s.id;
+    studentFinish.textContent='Finish: '+s.finish;
+    strategyType.textContent=strategy(s)[0];
+    strategyHint.textContent=strategy(s)[1];
+    splitVar.textContent=splitChange(s)[0];
+    splitVarHint.textContent=splitChange(s)[1];
+
+    renderLeaderboard(s.id);
+  }
+
+  function renderLeaderboard(selectedId){
+    leaderBody.innerHTML='';
+
+    const sorted=students.slice().sort((a,b)=>{
+      const order={A:1,B:2,C:3,D:4,DNF:5};
+      if(order[a.band]!==order[b.band])return order[a.band]-order[b.band];
+      if(a.finish==='DNF'&&b.finish==='DNF')return a.id-b.id;
+      if(a.finish==='DNF')return 1;
+      if(b.finish==='DNF')return -1;
+      return timeToSec(a.finish)-timeToSec(b.finish);
+    });
+
+    sorted.forEach((s,i)=>{
+      const tr=document.createElement('tr');
+      tr.className=bandClass(s.band)+(selectedId===s.id?' selected':'');
+      tr.innerHTML=`
+        <td>${i+1}</td>
+        <td>${s.id}</td>
+        <td>${s.finish}</td>
+        <td>${s.band}</td>`;
+      leaderBody.appendChild(tr);
+    });
+  }
+
+  function buildSelect(){
+    const g=document.createElement('option');
+    g.value='__group__';
+    g.textContent='Whole Class';
+    viewSel.appendChild(g);
+
+    students.forEach(s=>{
+      const o=document.createElement('option');
+      o.value=s.id;
+      o.textContent='Runner #'+s.id;
+      viewSel.appendChild(o);
+    });
+  }
+
+  viewSel.addEventListener('change',()=>{
+    viewSel.value==='__group__'?setClassView():setStudentView(Number(viewSel.value));
   });
-  svg.innerHTML=html;
-}
 
-function setClassView(){
-  mainTitle.textContent='Whole-Class Feedback';
-  mainHint.textContent='Simple feedback based on finish time and lap splits.';
-  modePill.textContent='Class';
-  modePill.className='pill blue';
-
-  const finishers=students.filter(s=>s.finish!=='DNF');
-  const finishSecs=finishers.map(s=>timeToSec(s.finish));
-  overview1.textContent=finishers.length+'/'+students.length;
-  overview1Text.textContent=finishers.length+' finished, '+(students.length-finishers.length)+' DNF';
-  overview2.textContent=secToTime(median(finishSecs));
-  overview3.textContent='Uneven';
-  overview3Text.textContent='Many runners slowed after the first few laps';
-  overview4.textContent='Mixed';
-  overview4Text.textContent='Some finished steady, others slowed';
-
-  mainTakeaway.textContent='The class completed the run reasonably well, but many students started faster than they could maintain. The next focus should be a calmer start and steadier middle laps.';
-
-  feedbackBox.innerHTML=checkHTML([
-    ['Pacing consistency','The class had mixed pacing. Stronger runners kept lap times closer together, while others had bigger changes between laps.'],
-    ['Start control','Several students started too fast, which likely made the middle laps harder to hold.'],
-    ['Middle laps','The biggest slowdown happened around the middle of the run. This is the main area to improve.'],
-    ['Finish','Some students finished strongly, but many continued to slow down towards the end.']
-  ]);
-
-  questionsBox.innerHTML=questionsHTML(classQuestions());
-
-  const avgSplits=[0,1,2,3,4,5].map(i=>mean(finishers.map(s=>timeToSec(s.splits[i]))));
-  graph(selectedGraph,[{splits:avgSplits.map(secToTime),color:'var(--accent)',width:4,opacity:1}]);
-  selectedGraphFooter.innerHTML='<span>Class average split by lap</span><span>Rising line = slower lap</span>';
-
-  const colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
-  graph(allGraph,students.map(s=>({splits:s.splits,color:colors[s.band],width:2,opacity:s.band==='DNF'?0.25:0.38})));
-
-  studentBandPill.textContent='Select';
-  studentBandPill.className='pill grey';
-  studentNo.textContent='—';
-  studentFinish.textContent='Finish: —';
-  strategyType.textContent='—';
-  strategyHint.textContent='—';
-  splitVar.textContent='—';
-  splitVarHint.textContent='—';
-  renderLeaderboard(null);
-}
-
-function setStudentView(id){
-  const s=students.find(x=>x.id===id);
-  if(!s)return;
-
-  mainTitle.textContent='Student #'+s.id+' Feedback';
-  mainHint.textContent='Simple feedback based on this student’s pace and lap splits.';
-  modePill.textContent='Student #'+s.id;
-  modePill.className='pill '+pillClass(s.band);
-
-  overview1.textContent=s.finish;
-  overview1Text.textContent='Finish time';
-  overview2.textContent=s.band;
-  overview3.textContent=strategy(s)[0];
-  overview3Text.textContent=strategy(s)[1];
-  overview4.textContent=splitChange(s)[0];
-  overview4Text.textContent=splitChange(s)[1];
-
-  mainTakeaway.textContent=takeaway(s);
-
-  feedbackBox.innerHTML=checkHTML([
-    ['Start control',startFeedback(s)],
-    ['Middle laps',middleFeedback(s)],
-    ['Finish',finishFeedback(s)],
-    ['Next focus',takeaway(s)]
-  ]);
-
-  questionsBox.innerHTML=questionsHTML(studentQuestions(s));
-
-  graph(selectedGraph,[{splits:s.splits,color:'var(--accent)',width:4,opacity:1}]);
-  selectedGraphFooter.innerHTML='<span>Splits: '+s.splits.filter(Boolean).join(' • ')+'</span><span>Rising line = slower lap</span>';
-
-  const colors={A:'#16a34a',B:'#2563eb',C:'#f59e0b',D:'#ef4444',DNF:'#94a3b8'};
-  graph(allGraph,students.map(x=>({splits:x.splits,color:colors[x.band],width:x.id===s.id?4:2,opacity:x.id===s.id?1:0.22})));
-
-  studentBandPill.textContent=s.band==='DNF'?'DNF':'Band '+s.band;
-  studentBandPill.className='pill '+pillClass(s.band);
-  studentNo.textContent='#'+s.id;
-  studentFinish.textContent='Finish: '+s.finish;
-  strategyType.textContent=strategy(s)[0];
-  strategyHint.textContent=strategy(s)[1];
-  splitVar.textContent=splitChange(s)[0];
-  splitVarHint.textContent=splitChange(s)[1];
-
-  renderLeaderboard(s.id);
-}
-
-function renderLeaderboard(selectedId){
-  leaderBody.innerHTML='';
-  const sorted=students.slice().sort((a,b)=>{
-    if(a.finish==='DNF'&&b.finish==='DNF')return a.id-b.id;
-    if(a.finish==='DNF')return 1;
-    if(b.finish==='DNF')return -1;
-    return timeToSec(a.finish)-timeToSec(b.finish);
+  document.getElementById('copyBtn').addEventListener('click',e=>{
+    e.target.textContent='Copied!';
+    setTimeout(()=>e.target.textContent='Copy Link',900);
   });
-  let pos=0;
-  sorted.forEach(s=>{
-    if(s.finish!=='DNF')pos++;
-    const tr=document.createElement('tr');
-    tr.className=bandClass(s.band)+(selectedId===s.id?' selected':'');
-    tr.innerHTML=`<td>${s.finish==='DNF'?'—':pos}</td><td>${s.id}</td><td>${s.finish}</td><td>${s.band}</td>`;
-    leaderBody.appendChild(tr);
-  });
-}
 
-function buildSelect(){
-  const g=document.createElement('option');
-  g.value='__group__'; g.textContent='Whole Class';
-  viewSel.appendChild(g);
-  students.forEach(s=>{
-    const o=document.createElement('option');
-    o.value=s.id; o.textContent='Student #'+s.id;
-    viewSel.appendChild(o);
-  });
-}
-viewSel.addEventListener('change',()=>viewSel.value==='__group__'?setClassView():setStudentView(Number(viewSel.value)));
-document.getElementById('copyBtn').addEventListener('click',e=>{e.target.textContent='Copied!';setTimeout(()=>e.target.textContent='Copy Link',900);});
-document.getElementById('printBtn').addEventListener('click',()=>window.print());
+  document.getElementById('printBtn').addEventListener('click',()=>window.print());
 
-buildSelect();
-setClassView();
+  buildSelect();
+  setClassView();
 })();
 </script>
 </body>
