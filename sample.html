@@ -1,239 +1,235 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Smart Run Feedback — Sample Summary</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Run Feedback — Sample Class</title>
 
 <style>
-body{margin:0;font-family:system-ui;background:#f6f7f9}
-.container{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
-.card{background:#fff;border-radius:12px;padding:12px}
-.sectionTitle{font-weight:800;margin:12px 0}
-.tableWrap{max-height:280px;overflow:auto}
+body{font-family:system-ui;margin:0;background:#f6f7f9}
+header{padding:14px;background:#015871;color:#fff;font-weight:900}
+main{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:#fff;border-radius:14px;padding:12px;box-shadow:0 6px 14px rgba(0,0,0,.08)}
+.sectionTitle{font-size:12px;font-weight:900;color:#015871;margin-bottom:8px;text-transform:uppercase}
 table{width:100%;border-collapse:collapse}
-th,td{padding:8px;border-bottom:1px solid #eee;text-align:center}
-tr:hover{background:#eef;cursor:pointer}
-.selected{outline:2px solid #015871;background:#dff}
-.graphBox{overflow:auto}
-.legend span{padding:4px 6px;border-radius:6px;margin-right:6px;font-size:12px}
-.bandA{background:#c8f7c5}
-.bandB{background:#e6f5c5}
-.bandC{background:#ffe7a8}
-.bandD{background:#ffc9c9}
+th,td{padding:8px;text-align:center;border-bottom:1px solid #eee}
+th{background:#015871;color:#fff}
+tr{cursor:pointer}
+tr:hover{background:#eef6f8}
+.graph{border:1px solid #ddd;border-radius:10px;padding:8px}
+.small{font-size:12px;color:#666}
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<header>
+Smart Run Feedback — Sample Class (36 Students, 2.4km, 6 Laps)
+</header>
 
-<!-- LEFT PANEL -->
+<main>
+
+<!-- LEFT COLUMN -->
 <div class="card">
 
 <div class="sectionTitle">Overview</div>
-<div>
-Class size: 36 students<br>
-Distance: 2.4km (6 laps)<br>
-Focus: Pacing consistency
-</div>
+<p><b>Completion:</b> 32 / 36</p>
+<p><b>Pacing:</b> Mixed</p>
+<p><b>Start Control:</b> Many started fast</p>
+<p><b>Finish:</b> Some strong finishes</p>
 
-<div class="sectionTitle">Leaderboard</div>
-<div class="legend">
-<span class="bandA">A = very consistent</span>
-<span class="bandB">B = mostly consistent</span>
-<span class="bandC">C = some changes</span>
-<span class="bandD">D = large changes</span>
-</div>
+<hr>
 
-<div class="tableWrap">
-<table>
+<div class="sectionTitle">Leaderboard (Click to view student)</div>
+
+<table id="table">
 <thead>
-<tr><th>Pos</th><th>Runner</th><th>Time</th><th>Band</th></tr>
+<tr>
+<th>Pos</th>
+<th>Runner</th>
+<th>Finish</th>
+<th>Band</th>
+</tr>
 </thead>
-<tbody id="leader"></tbody>
+<tbody></tbody>
 </table>
-</div>
+
+<hr>
 
 <div class="sectionTitle">Selected Lap Trend</div>
-<svg id="selectedGraph" width="100%" height="220"></svg>
+<svg id="selectedGraph" width="100%" height="200"></svg>
+<div class="small">Higher line = slower lap</div>
 
-<div class="sectionTitle">All Runners' Split Times</div>
-<svg id="allGraph" width="100%" height="260"></svg>
+<hr>
+
+<div class="sectionTitle">All Runners Split Times</div>
+<svg id="allGraph" width="100%" height="240"></svg>
+
+<hr>
 
 <div class="sectionTitle">Feedback</div>
 <ul>
-<li>Most students showed steady pacing in the middle laps.</li>
-<li>Several runners started too fast, leading to slower final laps.</li>
-<li>A few runners improved pace toward the end (strong finish).</li>
+<li>Pacing consistency varied across the class</li>
+<li>Many runners started too fast and slowed later</li>
+<li>Some runners showed strong finishing pace</li>
+<li>Focus next: maintain even lap timing</li>
 </ul>
 
-<div class="sectionTitle">Questions to Check Understanding</div>
-<ul>
-<li>If your first lap is much faster than the rest, what might happen later?</li>
-<li>What does a steady line on the graph tell you about pacing?</li>
-</ul>
+<hr>
+
+<div class="sectionTitle">Questions</div>
+<p><b>Q1:</b> What happens when you start too fast?<br>
+<span class="small">→ Later laps slower, harder finish</span></p>
+
+<p><b>Q2:</b> What is a better pacing plan?<br>
+<span class="small">→ Steady laps, controlled start</span></p>
+
+<hr>
 
 <div class="sectionTitle">Key Takeaway</div>
-Consistent pacing helps you finish strong and feel more in control.
+<p>Most students need to improve pacing control — aim for even laps first before increasing speed.</p>
 
 </div>
 
-
-<!-- RIGHT PANEL -->
-<div class="card" id="studentPanel">
+<!-- RIGHT COLUMN -->
+<div class="card">
 
 <div class="sectionTitle">Selected Student</div>
-<div id="studentInfo">Click a runner</div>
+<p><b>ID:</b> <span id="sid">—</span></p>
+<p><b>Finish:</b> <span id="stime">—</span></p>
+<p><b>Strategy:</b> <span id="strategy">—</span></p>
 
-<div class="sectionTitle">Leaderboard</div>
-<div class="tableWrap">
-<table>
-<thead>
-<tr><th>Pos</th><th>Runner</th><th>Time</th><th>Band</th></tr>
-</thead>
-<tbody id="leader2"></tbody>
-</table>
-</div>
+<hr>
 
-<div class="sectionTitle">Student Reflection Questions</div>
+<div class="sectionTitle">Reflection Questions</div>
 <ul>
-<li>How did your pace feel at the start?</li>
-<li>Did your speed change during the run?</li>
-<li>What would you try differently next time?</li>
+<li>How does your body feel right now?</li>
+<li>What was your effort level (1–10)?</li>
+<li>Where did you feel fatigue most?</li>
+<li>Was your pace smooth or forced?</li>
+<li>What went well?</li>
+<li>What was hardest?</li>
 </ul>
 
 </div>
 
-</div>
+</main>
 
 <script>
 
-// --- SAMPLE DATA (36 students) ---
-function randomRunner(id){
-  let base = 70 + Math.random()*15;
+// ===== MOCK DATA =====
+function rand(min,max){return Math.random()*(max-min)+min}
 
-  let splits = [];
-  let time = 0;
+let runners=[];
 
-  for(let i=0;i<6;i++){
-    let variation = (Math.random()*6)-3;
-
-    // some runners finish faster
-    if(Math.random()>0.7) variation -= i*1.2;
-
-    time += (base + variation)*1000;
-    splits.push(time);
-  }
-
-  return {id:id, splits:splits, finish:splits[5]};
-}
-
-let runners = [];
 for(let i=1;i<=36;i++){
-  runners.push(randomRunner(i));
-}
-
-// --- UTIL ---
-function perLap(s){
-  let out=[];
-  for(let i=0;i<s.length;i++){
-    let prev=i===0?0:s[i-1];
-    out.push((s[i]-prev)/1000);
+  let splits=[]
+  
+  // mix pacing types
+  let type=Math.random()
+  
+  for(let l=0;l<6;l++){
+    let base=90
+    
+    if(type<0.33){ // even
+      splits.push(base + rand(-3,3))
+    }
+    else if(type<0.66){ // fast start slow finish
+      splits.push(base - (l*4) + rand(-2,2))
+    }
+    else{ // slow start fast finish
+      splits.push(base + (l*4) + rand(-2,2))
+    }
   }
-  return out;
+  
+  let total=splits.reduce((a,b)=>a+b,0)
+  
+  runners.push({
+    id:i,
+    splits,
+    total
+  })
 }
 
-function sd(arr){
-  let m=arr.reduce((a,b)=>a+b)/arr.length;
-  return Math.sqrt(arr.reduce((a,b)=>a+(b-m)*(b-m),0)/arr.length);
+// ===== HELPERS =====
+function time(sec){
+  let m=Math.floor(sec/60)
+  let s=Math.round(sec%60)
+  return m+":"+(s<10?"0":"")+s
 }
 
-function band(r){
-  let v=sd(perLap(r.splits));
-  if(v<2)return 'A';
-  if(v<4)return 'B';
-  if(v<7)return 'C';
-  return 'D';
+function strategy(r){
+  let first=r.splits[0]
+  let last=r.splits[5]
+  
+  if(Math.abs(first-last)<3) return "Even pace"
+  if(last<first) return "Fast finish"
+  return "Fast start"
 }
 
-runners.forEach(r=>{
-  r.band = band(r);
-});
+// ===== TABLE =====
+let tbody=document.querySelector("#table tbody")
 
-// sort by finish
-runners.sort((a,b)=>a.finish-b.finish);
+runners.sort((a,b)=>a.total-b.total)
 
-// --- LEADERBOARD ---
-function render(id){
-  let el=document.getElementById(id);
-  el.innerHTML="";
-  runners.forEach((r,i)=>{
-    let tr=document.createElement("tr");
-    tr.innerHTML=
-      "<td>"+(i+1)+"</td>"+
-      "<td>"+r.id+"</td>"+
-      "<td>"+format(r.finish)+"</td>"+
-      "<td>"+r.band+"</td>";
+runners.forEach((r,i)=>{
+  let tr=document.createElement("tr")
+  
+  let band="C"
+  let sd=Math.sqrt(r.splits.map(x=>x-r.splits.reduce((a,b)=>a+b)/6).reduce((a,b)=>a+b*b)/6)
+  
+  if(sd<2.5) band="A"
+  else if(sd<5) band="B"
+  else if(sd<10) band="C"
+  else band="D"
+  
+  tr.innerHTML=`
+  <td>${i+1}</td>
+  <td>${r.id}</td>
+  <td>${time(r.total)}</td>
+  <td>${band}</td>
+  `
+  
+  tr.onclick=()=>selectRunner(r)
+  
+  tbody.appendChild(tr)
+})
 
-    tr.onclick=()=>select(r.id);
-    el.appendChild(tr);
-  });
+// ===== GRAPHS =====
+function drawGraph(svg, data, highlight){
+  svg.innerHTML=""
+  
+  let w=600,h=200
+  let max=160,min=60
+  
+  data.forEach(r=>{
+    let path=""
+    r.splits.forEach((s,i)=>{
+      let x=50 + i*80
+      let y=20 + ((s-min)/(max-min))*150
+      
+      path += (i===0?"M":"L")+x+","+y
+    })
+    
+    let p=document.createElementNS("http://www.w3.org/2000/svg","path")
+    p.setAttribute("d",path)
+    p.setAttribute("fill","none")
+    p.setAttribute("stroke", highlight===r ? "red" : "#999")
+    p.setAttribute("stroke-width", highlight===r ? "3" : "1")
+    
+    svg.appendChild(p)
+  })
 }
 
-function format(ms){
-  let s=Math.floor(ms/1000);
-  let m=Math.floor(s/60);
-  let ss=s%60;
-  return m+":"+("0"+ss).slice(-2);
-}
+drawGraph(document.getElementById("allGraph"), runners)
 
-render("leader");
-render("leader2");
-
-// --- GRAPH ---
-function draw(svg, runners, highlight){
-  svg.innerHTML="";
-  let w=600,h=220,max=0;
-
-  runners.forEach(r=>{
-    perLap(r.splits).forEach(v=>max=Math.max(max,v));
-  });
-
-  runners.forEach(r=>{
-    let laps=perLap(r.splits);
-    let path="";
-    laps.forEach((v,i)=>{
-      let x=i*(w/5);
-      let y=h-(v/max*h);
-      path+=(i===0?"M":"L")+x+","+y;
-    });
-
-    let p=document.createElementNS("http://www.w3.org/2000/svg","path");
-    p.setAttribute("d",path);
-    p.setAttribute("stroke",r.id===highlight?"red":"#aaa");
-    p.setAttribute("stroke-width",r.id===highlight?3:1);
-    p.setAttribute("fill","none");
-
-    svg.appendChild(p);
-  });
-}
-
-// initial
-draw(document.getElementById("allGraph"), runners);
-
-// --- SELECT ---
-function select(id){
-  let r=runners.find(x=>x.id==id);
-
-  document.getElementById("studentInfo").innerHTML =
-    "Runner "+id+" | Time: "+format(r.finish)+" | Band "+r.band;
-
-  draw(document.getElementById("selectedGraph"), [r], id);
-  draw(document.getElementById("allGraph"), runners, id);
-
-  document.getElementById("studentPanel")
-    .scrollIntoView({behavior:"smooth"});
+// ===== SELECT =====
+function selectRunner(r){
+  document.getElementById("sid").textContent=r.id
+  document.getElementById("stime").textContent=time(r.total)
+  document.getElementById("strategy").textContent=strategy(r)
+  
+  drawGraph(document.getElementById("selectedGraph"), [r], r)
 }
 
 </script>
