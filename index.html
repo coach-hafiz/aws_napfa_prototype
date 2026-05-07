@@ -476,9 +476,10 @@ setStatus(
     }catch(e){}
   }
 
-  function drawDetectionZone(w, h){
-    zoneTop = Math.round(h * 0.43);
-    zoneBottom = Math.round(h * 0.57);
+function drawDetectionZone(w, h){
+    // Middle one-third of the video feed
+    zoneTop = Math.round(h / 3);
+    zoneBottom = Math.round((h * 2) / 3);
 
     var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line') || 'red';
     lineColor = (lineColor || 'red').trim();
